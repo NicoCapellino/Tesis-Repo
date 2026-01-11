@@ -1,0 +1,13 @@
+# Large datasets
+data/
+notebooks/data/
+
+# Spark / Sedona
+spark-warehouse/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Big files
+*.csv
+*.parquet
