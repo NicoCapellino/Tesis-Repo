@@ -1,6 +1,7 @@
 # Large datasets
-data/
-notebooks/data/
+# data/  <-- Comentado para permitir archivos .dvc dentro
+# notebooks/data/ <-- Comentado para permitir archivos .dvc dentro
+
 
 # Spark / Sedona
 spark-warehouse/
