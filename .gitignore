@@ -12,3 +12,10 @@ spark-warehouse/
 # Big files
 *.csv
 *.parquet
+
+# Generated outputs
+*.html
+
+# Python
+__pycache__/
+*.pyc
