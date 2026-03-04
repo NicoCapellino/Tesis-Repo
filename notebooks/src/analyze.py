@@ -1,7 +1,9 @@
 from pyspark.sql.functions import (
     col, expr, array, concat, lit,
     hour, dayofweek, month, count, avg, when,
+    stddev, year as year_fn, round as spark_round,
 )
+from pyspark.sql import Window
 from pyspark.ml.fpm import FPGrowth
 from pyspark.ml.feature import VectorAssembler
 from pyspark.ml.clustering import KMeans
@@ -9,6 +11,7 @@ from pyspark.ml.clustering import KMeans
 from .config import (
     FP_MIN_SUPPORT, FP_MIN_CONFIDENCE,
     KMEANS_K, KMEANS_SEED, PROXIMITY_THRESHOLD_KM,
+    ANOMALY_STDDEV_THRESHOLD,
 )
 
 
@@ -247,3 +250,145 @@ def run_fp_growth_expanded(df_categorized, min_support=None, min_confidence=None
     model = fp.fit(transactions)
 
     return model.freqItemsets, model.associationRules
+
+
+# ---------------------------------------------------------------------------
+# Offense Level Breakdown
+# ---------------------------------------------------------------------------
+
+def analyze_offense_level(df):
+    """Break down crimes by offense level (FELONY / MISDEMEANOR / VIOLATION).
+
+    Returns (level_counts, level_by_borough, level_by_time_slot).
+    Expects df enriched with add_temporal_columns() and having offense_level, borough columns.
+    """
+    level_counts = (
+        df.groupBy("offense_level")
+        .agg(count("*").alias("total_crimes"))
+        .orderBy("total_crimes", ascending=False)
+    )
+
+    level_by_borough = (
+        df.filter(col("borough").isNotNull())
+        .groupBy("borough", "offense_level")
+        .agg(count("*").alias("total_crimes"))
+        .orderBy("borough", "total_crimes", ascending=[True, False])
+    )
+
+    level_by_time_slot = (
+        df.filter(col("time_slot").isNotNull())
+        .groupBy("time_slot", "offense_level")
+        .agg(count("*").alias("total_crimes"))
+        .orderBy("time_slot", "total_crimes", ascending=[True, False])
+    )
+
+    return level_counts, level_by_borough, level_by_time_slot
+
+
+# ---------------------------------------------------------------------------
+# Premise Type Analysis
+# ---------------------------------------------------------------------------
+
+def analyze_premise_type(df):
+    """Analyze which premise types concentrate the most crimes.
+
+    Returns (top_premises, premise_by_crime_type).
+    """
+    top_premises = (
+        df.filter(col("premise_type").isNotNull())
+        .groupBy("premise_type")
+        .agg(count("*").alias("total_crimes"))
+        .orderBy("total_crimes", ascending=False)
+    )
+
+    premise_by_crime_type = (
+        df.filter(col("premise_type").isNotNull())
+        .groupBy("premise_type", "offense_description")
+        .agg(count("*").alias("total_crimes"))
+        .orderBy("total_crimes", ascending=False)
+    )
+
+    return top_premises, premise_by_crime_type
+
+
+# ---------------------------------------------------------------------------
+# Anomaly Detection (statistical z-score based)
+# ---------------------------------------------------------------------------
+
+def detect_anomalies_by_borough_month(df, threshold=None):
+    """Detect monthly crime count anomalies per borough using z-score method.
+
+    A month is flagged as anomalous if its crime count deviates more than
+    `threshold` standard deviations from the borough's mean.
+
+    Returns (df_with_scores, df_anomalies).
+    """
+    threshold = threshold or ANOMALY_STDDEV_THRESHOLD
+
+    monthly = (
+        df.filter(col("borough").isNotNull())
+        .withColumn("crime_year", year_fn(col("crime_start_date")))
+        .withColumn("crime_month", month(col("crime_start_date")))
+        .groupBy("borough", "crime_year", "crime_month")
+        .agg(count("*").alias("crime_count"))
+    )
+
+    w = Window.partitionBy("borough")
+    df_scored = (
+        monthly
+        .withColumn("borough_mean", avg("crime_count").over(w))
+        .withColumn("borough_stddev", stddev("crime_count").over(w))
+        .withColumn(
+            "z_score",
+            when(
+                col("borough_stddev") > 0,
+                spark_round(
+                    (col("crime_count") - col("borough_mean")) / col("borough_stddev"), 2
+                )
+            ).otherwise(lit(0.0))
+        )
+        .withColumn("is_anomaly", expr(f"abs(z_score) > {threshold}"))
+        .orderBy("borough", "crime_year", "crime_month")
+    )
+
+    df_anomalies = df_scored.filter(col("is_anomaly"))
+
+    return df_scored, df_anomalies
+
+
+def detect_anomalies_by_crime_type_month(df, threshold=None):
+    """Detect monthly anomalies per crime type using z-score method.
+
+    Returns (df_with_scores, df_anomalies).
+    """
+    threshold = threshold or ANOMALY_STDDEV_THRESHOLD
+
+    monthly = (
+        df.filter(col("offense_description").isNotNull())
+        .withColumn("crime_year", year_fn(col("crime_start_date")))
+        .withColumn("crime_month", month(col("crime_start_date")))
+        .groupBy("offense_description", "crime_year", "crime_month")
+        .agg(count("*").alias("crime_count"))
+    )
+
+    w = Window.partitionBy("offense_description")
+    df_scored = (
+        monthly
+        .withColumn("type_mean", avg("crime_count").over(w))
+        .withColumn("type_stddev", stddev("crime_count").over(w))
+        .withColumn(
+            "z_score",
+            when(
+                col("type_stddev") > 0,
+                spark_round(
+                    (col("crime_count") - col("type_mean")) / col("type_stddev"), 2
+                )
+            ).otherwise(lit(0.0))
+        )
+        .withColumn("is_anomaly", expr(f"abs(z_score) > {threshold}"))
+        .orderBy("offense_description", "crime_year", "crime_month")
+    )
+
+    df_anomalies = df_scored.filter(col("is_anomaly"))
+
+    return df_scored, df_anomalies
