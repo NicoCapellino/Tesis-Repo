@@ -266,28 +266,28 @@ El proyecto incluye un `Makefile` con atajos para las operaciones más comunes:
 │                                                                      │
 │  NYC Open Data (Socrata API)          OpenStreetMap (Overpass API)   │
 │  ├─ NYPD Complaints Historic          ├─ Comisarías de policía       │
-│  └─ NYPD Complaints YTD               └─ Estaciones de transporte   │
+│  └─ NYPD Complaints YTD               └─ Estaciones de transporte    │
 └──────────────────┬───────────────────────────────┬───────────────────┘
                    │                               │
                    ▼                               ▼
          ┌─────────────────────────────────────────────────┐
-         │              PIPELINE ETL (src/)                 │
-         │                                                  │
-         │  Extract ──► Transform ──► Load                  │
-         │  (descarga)  (limpieza)    (parquet + zstd)      │
+         │              PIPELINE ETL (src/)                │
+         │                                                 │
+         │  Extract ──► Transform ──► Load                 │
+         │  (descarga)  (limpieza)    (parquet + zstd)     │
          └──────────────────┬──────────────────────────────┘
                             │
                             ▼
               ┌─────────────────────────┐
-              │    data/processed/       │
-              │    data/reference/       │
-              │   (archivos .parquet)    │
+              │    data/processed/      │
+              │    data/reference/      │
+              │   (archivos .parquet)   │
               └────────────┬────────────┘
                            │
                            ▼
          ┌─────────────────────────────────────────────────┐
-         │           DASHBOARD (app/)                       │
-         │                                                  │
+         │           DASHBOARD (app/)                      │
+         │                                                 │
          │  ┌────────────────┐  ┌────────────────────────┐ │
          │  │ Estadísticas   │  │ Análisis Avanzado      │ │
          │  │ Descriptivas   │  │                        │ │
