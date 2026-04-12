@@ -1,0 +1,50 @@
+# ============================================================================
+# NYC Crime Pipeline — Docker Compose
+#
+# Services:
+#   pipeline  — One-shot ETL: extract from APIs → transform → save parquet
+#   dashboard — Streamlit web app on http://localhost:8501
+#   test      — Run the test suite (on demand)
+#
+# Quick start:
+#   make all                             # Build + ETL + Dashboard (first time)
+#   make pipeline                        # Re-run ETL only
+#   make dashboard                       # Start dashboard only
+#   make test                            # Run tests
+# ============================================================================
+
+services:
+
+  pipeline:
+    build: .
+    container_name: nyc-pipeline
+    command: ["python", "-m", "src.pipeline"]
+    volumes:
+      - pipeline-data:/app/data
+    environment:
+      - NYC_PIPELINE_PAGE_SIZE=50000
+      - NYC_PIPELINE_START_YEAR=2020
+      - NYC_PIPELINE_END_YEAR=2025
+
+  dashboard:
+    build: .
+    container_name: nyc-dashboard
+    ports:
+      - "8501:8501"
+    volumes:
+      - pipeline-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  test:
+    build: .
+    container_name: nyc-tests
+    command: ["python", "-m", "pytest", "tests/", "-v", "--tb=short"]
+
+volumes:
+  pipeline-data:
