@@ -1,6 +1,0 @@
-outs:
-- md5: d50babe1db120db769ca28eb3730c427.dir
-  size: 223437
-  nfiles: 14
-  hash: md5
-  path: parquet
