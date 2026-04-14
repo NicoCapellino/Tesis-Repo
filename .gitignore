@@ -12,3 +12,14 @@ spark-warehouse/
 # Big files
 *.csv
 *.parquet
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Virtual environment
+.venv/
+
+# Data directory (managed via DVC or pipeline)
+data/
