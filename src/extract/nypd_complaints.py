@@ -278,7 +278,7 @@ class NYPDComplaintsExtractor:
         headers = (
             {"X-App-Token": self.settings.socrata_app_token}
             if self.settings.socrata_app_token
-            else None
+            else {}
         )
 
         client = self._get_client()
