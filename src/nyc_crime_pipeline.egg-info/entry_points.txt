@@ -1,0 +1,2 @@
+[console_scripts]
+nyc-pipeline = src.pipeline:main
