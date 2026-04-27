@@ -136,6 +136,10 @@ class PipelineSettings(BaseSettings):
         default=120.0,
         description="HTTP request timeout in seconds.",
     )
+    socrata_app_token: str | None = Field(
+        default=None,
+        description="Optional Socrata app token sent as X-App-Token header.",
+    )
 
     # Year range for extraction
     start_year: int = Field(default=2020, description="First year to extract.")

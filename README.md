@@ -52,6 +52,7 @@ El proyecto implementa un pipeline ETL completo que descarga, transforma y anali
 | **Conexión a internet** | Solo para el pipeline | La descarga de datos requiere acceso a APIs públicas |
 
 > **Nota:** No es necesario instalar Python, Streamlit ni ninguna dependencia de forma local. Todo corre dentro de contenedores Docker.
+> La imagen Docker usa **Python 3.12** y el proyecto declara compatibilidad con **Python >= 3.11** en `pyproject.toml`.
 
 ---
 
@@ -318,6 +319,9 @@ El proyecto incluye un `Makefile` con atajos para las operaciones más comunes:
 | **Configuración** | Pydantic Settings | Validación de tipos + variables de entorno |
 | **Logging** | structlog | Logs estructurados con contexto enriquecido |
 
+> **Alcance actual del repositorio:** esta versión no incluye Spark/Sedona, DVC ni notebooks Jupyter.  
+> El `docker-compose.yml` define tres servicios (`pipeline`, `dashboard`, `test`) y expone únicamente el dashboard en `8501`.
+
 ---
 
 ## Pipeline ETL
@@ -328,9 +332,9 @@ El pipeline se ejecuta con `docker compose run --rm pipeline` y consta de tres f
 
 **Datos del NYPD** (`src/extract/nypd_complaints.py`):
 - Descarga registros de la [API Socrata de NYC Open Data](https://data.cityofnewyork.us/).
-- Dos datasets: histórico (2020 en adelante) y year-to-date (año en curso).
+- Dos datasets: histórico (`qgea-i56i`) y year-to-date (`5uac-w243`).
 - Paginación automática (50.000 registros por request) con reintentos exponenciales.
-- Deduplicación por `complaint_id` para evitar registros repetidos entre datasets.
+- Deduplicación por `cmplnt_num` para evitar registros repetidos entre datasets.
 - Particionado por año para procesamiento eficiente.
 
 **Datos de infraestructura** (`src/extract/osm_infrastructure.py`):
@@ -576,12 +580,13 @@ Detección de días con actividad criminal anormalmente alta o baja:
 
 | Fuente | Dataset | Registros | Actualización |
 |--------|---------|-----------|---------------|
-| [NYC Open Data](https://data.cityofnewyork.us/) | NYPD Complaint Data Historic | ~3.000.000+ | Trimestral |
-| [NYC Open Data](https://data.cityofnewyork.us/) | NYPD Complaint Data Current (YTD) | Variable | Semanal |
+| [NYC Open Data](https://data.cityofnewyork.us/) | NYPD Complaint Data Historic (`qgea-i56i`) | ~3.000.000+ | Trimestral |
+| [NYC Open Data](https://data.cityofnewyork.us/) | NYPD Complaint Data Current (YTD, `5uac-w243`) | Variable | Semanal |
 | [OpenStreetMap](https://www.openstreetmap.org/) | Comisarías de policía (NYC) | ~77 | Comunitaria |
 | [OpenStreetMap](https://www.openstreetmap.org/) | Estaciones de transporte (NYC) | ~1.000+ | Comunitaria |
 
-Todos los datos son **públicos y de acceso libre**. No se requieren API keys ni autenticación.
+Todos los datos son **públicos y de acceso libre**. No se requieren API keys ni autenticación para funcionar.
+Opcionalmente se puede configurar `X-App-Token` de Socrata para mejorar límites de rate.
 
 ---
 
@@ -597,6 +602,7 @@ La configuración se maneja mediante **variables de entorno** con el prefijo `NY
 | `NYC_PIPELINE_MAX_RETRIES` | `5` | Reintentos ante fallos HTTP |
 | `NYC_PIPELINE_RETRY_WAIT_SECONDS` | `2.0` | Base del backoff exponencial |
 | `NYC_PIPELINE_REQUEST_TIMEOUT_SECONDS` | `120` | Timeout por request |
+| `NYC_PIPELINE_SOCRATA_APP_TOKEN` | `None` | Header opcional `X-App-Token` para Socrata |
 | `NYC_PIPELINE_OVERPASS_TIMEOUT` | `120` | Timeout para consultas OSM |
 
 **Ejemplo:** Descargar solo 2023-2025 con mayor timeout:

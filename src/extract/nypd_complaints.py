@@ -275,9 +275,14 @@ class NYPDComplaintsExtractor:
             "$offset": str(offset),
             "$order": f"{date_column} ASC",
         }
+        headers = (
+            {"X-App-Token": self.settings.socrata_app_token}
+            if self.settings.socrata_app_token
+            else None
+        )
 
         client = self._get_client()
-        response = client.get(endpoint, params=params)
+        response = client.get(endpoint, params=params, headers=headers)
         response.raise_for_status()
 
         content = response.text.strip()

@@ -99,3 +99,37 @@ class TestNYPDComplaintsExtractor:
 
         # Same 2 records from 2 datasets → should be deduplicated to 2
         assert len(result) == 2
+
+    def test_fetch_page_uses_x_app_token_when_configured(self) -> None:
+        """Socrata requests should include X-App-Token when provided in settings."""
+        extractor = NYPDComplaintsExtractor(
+            settings=PipelineSettings(
+                page_size=100,
+                start_year=2024,
+                end_year=2024,
+                socrata_app_token="test-token",
+            )
+        )
+        csv_data = "cmplnt_num,boro_nm\n1,MANHATTAN\n2,BROOKLYN\n"
+        mock_response = MagicMock(status_code=200, text=csv_data)
+        mock_response.raise_for_status = MagicMock()
+
+        with patch.object(extractor, "_get_client") as mock_client:
+            mock_http = MagicMock()
+            mock_http.get.return_value = mock_response
+            mock_client.return_value = mock_http
+
+            result = extractor._fetch_page(
+                endpoint=NYPD_DATASETS["historic"].endpoint,
+                date_column="cmplnt_fr_dt",
+                start_date="2024-01-01T00:00:00",
+                end_date="2024-12-31T23:59:59",
+                offset=0,
+                limit=100,
+            )
+
+        assert result is not None
+        assert len(result) == 2
+        mock_http.get.assert_called_once()
+        _, kwargs = mock_http.get.call_args
+        assert kwargs["headers"] == {"X-App-Token": "test-token"}
