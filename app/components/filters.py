@@ -53,9 +53,14 @@ def get_offices() -> pl.DataFrame | None:
     return st.session_state.get("offices")
 
 
-def get_usgs_law_enforcement() -> pl.DataFrame | None:
-    """Return USGS law enforcement facility data from session state."""
-    return st.session_state.get("usgs_law_enforcement")
+def get_usgs_police() -> pl.DataFrame | None:
+    """Return USGS police station data (FCode 74034) from session state."""
+    return st.session_state.get("usgs_police")
+
+
+def get_usgs_fire() -> pl.DataFrame | None:
+    """Return USGS fire station data (FCode 74026) from session state."""
+    return st.session_state.get("usgs_fire")
 
 
 def offense_type_filter(df: pl.DataFrame, *, key: str = "offense_filter") -> list[str]:

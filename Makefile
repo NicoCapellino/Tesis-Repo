@@ -2,13 +2,16 @@
 # NYC Crime Pipeline — Makefile
 # ============================================================================
 
-.PHONY: build pipeline transform dashboard dashboard-bg test logs stop clean all
+.PHONY: build pipeline reference transform dashboard dashboard-bg test logs stop clean all
 
 build:
 	docker-compose build
 
 pipeline: build
 	docker-compose run --rm pipeline
+
+reference: build
+	docker-compose run --rm pipeline python -m src.pipeline --skip-complaints --skip-infrastructure
 
 transform: build
 	docker-compose run --rm pipeline python -m src.pipeline --skip-extract

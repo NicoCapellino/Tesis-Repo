@@ -125,8 +125,14 @@ def load_offices() -> pl.DataFrame | None:
 
 
 @st.cache_data(ttl=3600)
-def load_usgs_law_enforcement() -> pl.DataFrame | None:
-    path = REFERENCE_DIR / DEFAULT_CITY / "usgs_law_enforcement.parquet"
+def load_usgs_police() -> pl.DataFrame | None:
+    path = REFERENCE_DIR / DEFAULT_CITY / "usgs_police.parquet"
+    return pl.read_parquet(path) if path.exists() else None
+
+
+@st.cache_data(ttl=3600)
+def load_usgs_fire() -> pl.DataFrame | None:
+    path = REFERENCE_DIR / DEFAULT_CITY / "usgs_fire.parquet"
     return pl.read_parquet(path) if path.exists() else None
 
 
@@ -141,7 +147,8 @@ if "complaints" not in st.session_state:
         st.session_state["healthcare"]              = load_healthcare()
         st.session_state["schools"]                 = load_schools()
         st.session_state["offices"]                 = load_offices()
-        st.session_state["usgs_law_enforcement"]    = load_usgs_law_enforcement()
+        st.session_state["usgs_police"]             = load_usgs_police()
+        st.session_state["usgs_fire"]               = load_usgs_fire()
 
 df_all = st.session_state["complaints"]
 
