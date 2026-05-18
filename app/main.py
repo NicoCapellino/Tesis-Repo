@@ -106,14 +106,42 @@ def load_transport_stations() -> pl.DataFrame | None:
     return pl.read_parquet(path) if path.exists() else None
 
 
+@st.cache_data(ttl=3600)
+def load_healthcare() -> pl.DataFrame | None:
+    path = REFERENCE_DIR / DEFAULT_CITY / "healthcare.parquet"
+    return pl.read_parquet(path) if path.exists() else None
+
+
+@st.cache_data(ttl=3600)
+def load_schools() -> pl.DataFrame | None:
+    path = REFERENCE_DIR / DEFAULT_CITY / "schools.parquet"
+    return pl.read_parquet(path) if path.exists() else None
+
+
+@st.cache_data(ttl=3600)
+def load_offices() -> pl.DataFrame | None:
+    path = REFERENCE_DIR / DEFAULT_CITY / "offices.parquet"
+    return pl.read_parquet(path) if path.exists() else None
+
+
+@st.cache_data(ttl=3600)
+def load_usgs_law_enforcement() -> pl.DataFrame | None:
+    path = REFERENCE_DIR / DEFAULT_CITY / "usgs_law_enforcement.parquet"
+    return pl.read_parquet(path) if path.exists() else None
+
+
 # ---------------------------------------------------------------------------
 # Load data and populate session state (only once per session)
 # ---------------------------------------------------------------------------
 if "complaints" not in st.session_state:
     with st.spinner("Cargando datos..."):
-        st.session_state["complaints"]         = load_complaints()
-        st.session_state["police_stations"]    = load_police_stations()
-        st.session_state["transport_stations"] = load_transport_stations()
+        st.session_state["complaints"]              = load_complaints()
+        st.session_state["police_stations"]         = load_police_stations()
+        st.session_state["transport_stations"]      = load_transport_stations()
+        st.session_state["healthcare"]              = load_healthcare()
+        st.session_state["schools"]                 = load_schools()
+        st.session_state["offices"]                 = load_offices()
+        st.session_state["usgs_law_enforcement"]    = load_usgs_law_enforcement()
 
 df_all = st.session_state["complaints"]
 
