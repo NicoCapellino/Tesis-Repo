@@ -1,20 +1,20 @@
 """
 Extraction of urban infrastructure data from the USGS National Map via OGC WFS 2.0.
 
-Downloads hospitals and law enforcement locations for New York City using
-authoritative federal data (NSDI/OGC-compliant), replacing crowd-sourced OSM
-for these categories.
+Downloads hospitals, police stations, and fire stations for New York City using
+authoritative federal data (NSDI/OGC-compliant), replacing crowd-sourced OSM.
 
 Service: https://carto-wfs.nationalmap.gov/arcgis/services/structures/MapServer/WFSServer
 Standard: OGC WFS 2.0.0
 
 FType codes used:
   800 = Hospitals / Medical Centers  → healthcare.parquet
-  740 = Law Enforcement & Emergency  → usgs_law_enforcement.parquet (police FCodes only)
+  740 = Law Enforcement & Emergency  → usgs_police.parquet (FCode 74034)
+                                     → usgs_fire.parquet   (FCode 74026)
 
-Police FCodes (subset of FType 740):
-  74010 = Law Enforcement Facility
-  74011 = Police Station
+Verified FCodes for NYC (from live WFS, May 2026):
+  74034 = Police Station
+  74026 = Fire Station
 """
 
 from __future__ import annotations
@@ -65,8 +65,9 @@ HEALTHCARE_FCODE_MAP: dict[str, str] = {
     "80099": "Medical Facility",
 }
 
-# FCodes considered "law enforcement" (not fire stations)
-POLICE_FCODES: frozenset[str] = frozenset({"74010", "74011", "74099"})
+# Verified FCodes from live WFS (May 2026) — prior values 74010/74011/74099 don't exist in the service
+POLICE_FCODES: frozenset[str] = frozenset({"74034"})
+FIRE_FCODES:   frozenset[str] = frozenset({"74026"})
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 
@@ -118,7 +119,7 @@ class USGSStructuresExtractor:
         return df
 
     def extract_law_enforcement(self, city: str) -> pl.DataFrame:
-        """Fetch FType 740 filtered to police FCodes only.
+        """Fetch FType 740 filtered to police FCodes only (FCode 74034).
 
         Returns DataFrame with columns:
         ``name``, ``lat``, ``lon``, ``facility_type``, ``address``,
@@ -134,10 +135,33 @@ class USGSStructuresExtractor:
             "ZIPCODE": "zipcode",
             "LOADDATE": "loaddate",
         }).with_columns([
-            pl.lit("Law Enforcement").alias("facility_type"),
+            pl.lit("Police Station").alias("facility_type"),
             pl.col("FCode").alias("fcode"),
         ]).select(["name", "lat", "lon", "facility_type", "address", "zipcode", "borough", "fcode", "loaddate"])
         log.info("usgs_fetch_done", ftype=740, records=len(df))
+        return df
+
+    def extract_fire_stations(self, city: str) -> pl.DataFrame:
+        """Fetch FType 740 filtered to fire station FCodes only (FCode 74026).
+
+        Returns DataFrame with columns:
+        ``name``, ``lat``, ``lon``, ``facility_type``, ``address``,
+        ``zipcode``, ``borough``, ``fcode``, ``loaddate``.
+        """
+        log.info("usgs_fetch_start", ftype=740, subtype="fire", city=city)
+        raw = self._fetch_ny(ftype=740)
+        nyc = self._filter_nyc(raw)
+        fire = nyc.filter(pl.col("FCode").is_in(list(FIRE_FCODES)))
+        df = fire.rename({
+            "NAME": "name",
+            "ADDRESS": "address",
+            "ZIPCODE": "zipcode",
+            "LOADDATE": "loaddate",
+        }).with_columns([
+            pl.lit("Fire Station").alias("facility_type"),
+            pl.col("FCode").alias("fcode"),
+        ]).select(["name", "lat", "lon", "facility_type", "address", "zipcode", "borough", "fcode", "loaddate"])
+        log.info("usgs_fetch_done", ftype=740, subtype="fire", records=len(df))
         return df
 
     def extract_and_save_all(
@@ -145,7 +169,10 @@ class USGSStructuresExtractor:
         city: str,
         output_dir: Path | None = None,
     ) -> dict[str, Path]:
-        """Fetch both datasets and save as Parquet.
+        """Fetch healthcare, police, and fire datasets and save as Parquet.
+
+        FType 740 is fetched once and split into police (74034) and fire (74026)
+        to avoid two round-trips to the WFS.
 
         Args:
             city: City key (currently only ``"new_york"`` is supported).
@@ -164,11 +191,32 @@ class USGSStructuresExtractor:
         log.info("saved_healthcare", records=len(healthcare_df), path=str(hc_path))
         saved["healthcare"] = hc_path
 
-        law_df = self.extract_law_enforcement(city)
-        law_path = output_dir / "usgs_law_enforcement.parquet"
-        law_df.write_parquet(law_path, compression="zstd")
-        log.info("saved_usgs_law_enforcement", records=len(law_df), path=str(law_path))
-        saved["usgs_law_enforcement"] = law_path
+        # Fetch FType 740 once, split into police + fire
+        log.info("usgs_fetch_start", ftype=740, city=city)
+        raw740 = self._fetch_ny(ftype=740)
+        nyc740 = self._filter_nyc(raw740)
+
+        def _normalise(df: pl.DataFrame, facility_type: str) -> pl.DataFrame:
+            return (
+                df.rename({"NAME": "name", "ADDRESS": "address", "ZIPCODE": "zipcode", "LOADDATE": "loaddate"})
+                  .with_columns([
+                      pl.lit(facility_type).alias("facility_type"),
+                      pl.col("FCode").alias("fcode"),
+                  ])
+                  .select(["name", "lat", "lon", "facility_type", "address", "zipcode", "borough", "fcode", "loaddate"])
+            )
+
+        police_df = _normalise(nyc740.filter(pl.col("FCode").is_in(list(POLICE_FCODES))), "Police Station")
+        police_path = output_dir / "usgs_police.parquet"
+        police_df.write_parquet(police_path, compression="zstd")
+        log.info("saved_usgs_police", records=len(police_df), path=str(police_path))
+        saved["usgs_police"] = police_path
+
+        fire_df = _normalise(nyc740.filter(pl.col("FCode").is_in(list(FIRE_FCODES))), "Fire Station")
+        fire_path = output_dir / "usgs_fire.parquet"
+        fire_df.write_parquet(fire_path, compression="zstd")
+        log.info("saved_usgs_fire", records=len(fire_df), path=str(fire_path))
+        saved["usgs_fire"] = fire_path
 
         return saved
 

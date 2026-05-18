@@ -29,7 +29,8 @@ from app.components.filters import (
     get_police_stations,
     get_schools,
     get_transport_stations,
-    get_usgs_law_enforcement,
+    get_usgs_fire,
+    get_usgs_police,
 )
 from config.settings import CITY_CONFIGS, DEFAULT_CITY
 
@@ -41,7 +42,8 @@ transport_df = get_transport_stations()
 healthcare_df = get_healthcare()
 schools_df = get_schools()
 offices_df = get_offices()
-usgs_law_df = get_usgs_law_enforcement()
+usgs_police_df = get_usgs_police()
+usgs_fire_df = get_usgs_fire()
 
 center = CITY_CONFIGS[DEFAULT_CITY].default_center
 

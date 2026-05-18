@@ -29,7 +29,8 @@ from app.components.filters import (
     get_police_stations,
     get_schools,
     get_transport_stations,
-    get_usgs_law_enforcement,
+    get_usgs_fire,
+    get_usgs_police,
 )
 
 st.header("Proximidad: Crímenes Cerca vs. Lejos de Infraestructura")
@@ -40,16 +41,18 @@ transport_df = get_transport_stations()
 healthcare_df = get_healthcare()
 schools_df = get_schools()
 offices_df = get_offices()
-usgs_law_df = get_usgs_law_enforcement()
+usgs_police_df = get_usgs_police()
+usgs_fire_df = get_usgs_fire()
 
 # Build available infrastructure options
 _INFRA_OPTIONS: dict[str, pl.DataFrame | None] = {
-    "Comisarías de policía": police_df,
+    "Comisarías de policía (OSM)": police_df,
     "Transporte público": transport_df,
     "Salud (hospitales + centros)": healthcare_df,
     "Escuelas federales": schools_df,
     "Oficinas federales": offices_df,
-    "USGS Fuerzas del Orden (federal)": usgs_law_df,
+    "USGS Comisarías (federal)": usgs_police_df,
+    "USGS Estaciones de bomberos": usgs_fire_df,
 }
 _available = {k: v for k, v in _INFRA_OPTIONS.items() if v is not None and not v.is_empty()}
 

@@ -7,15 +7,15 @@ Hospitals and emergency response and law enforcement locations for New York City
 https://carto-wfs.nationalmap.gov/arcgis/services/structures/MapServer/WFSServer
 ```
 
-This is an **OGC WFS 2.0.0** endpoint. It was verified returning a valid `<wfs:WFS_Capabilities>` XML response during the POC session (May 2026), and the POC script ran successfully against it producing 71 hospitals and 305 emergency response and law enforcement records. It has shown intermittent availability in subsequent checks, including 504 responses, but currently returns valid WFS capabilities. Federal WFS services do not guarantee uptime.
+This is an **OGC WFS 2.0.0** endpoint. It was verified returning a valid `<wfs:WFS_Capabilities>` XML response during the POC session. As of May 18, 2026, it returned valid WFS capabilities and feature data. The POC script ran successfully producing 71 hospitals and 305 emergency response and law enforcement records. It has shown intermittent availability in subsequent checks, including 504 responses. No SLA was identified for this endpoint.
 
 ---
 
-## The SDI chain — who validates this
+## The SDI chain — institutional evidence
 
 ### 1. FGDC — The governing body
 
-The **Federal Geographic Data Committee (FGDC)** is the interagency body established by the **Office of Management and Budget (OMB) Circular A-16** to coordinate federal geospatial data and lead the NSDI. It is the authority that designates which datasets qualify as **National Geospatial Data Assets (NGDAs)**.
+The **Federal Geographic Data Committee (FGDC)** is the interagency body established by the **Office of Management and Budget (OMB) Circular A-16** to coordinate federal geospatial data and lead the NSDI. FGDC manages the NGDA portfolio under OMB A-16 and Geospatial Data Act processes, through which datasets are designated as **National Geospatial Data Assets (NGDAs)**.
 
 > "The NSDI provides the technology, policies, criteria, standards, and employees necessary to promote geospatial data sharing throughout the Federal, State, Tribal, and local governments, and the private sector."
 
@@ -51,18 +51,18 @@ The USGS National Structures Dataset is officially registered as **NGDA ID 135**
 
 ### 4. Data standard — FGDC-STD-019-2014
 
-The Real Property NGDA theme is governed by the **Real Property Asset Data Standard (RPADS)**, formally endorsed by FGDC. RPADS is a broader real property management standard covering federal asset inventory. The specific FType and FCode values used in this POC are defined by the **USGS National Map Structures content specification**, not RPADS directly.
+The Real Property NGDA theme is associated with the **Real Property Asset Data Standard (RPADS)**, formally endorsed by FGDC. RPADS is a broader real property management standard covering federal asset inventory. The specific FType and FCode values used in this POC are defined by the **USGS National Map Structures content specification**, not RPADS directly.
 
 - FGDC RPADS standard: [www.fgdc.gov/standards/projects/RPADS/RPADS_final/view](https://www.fgdc.gov/standards/projects/RPADS/RPADS_final/view)
 - Structures content specification (FType/FCode definitions): [www.usgs.gov/ngp-standards-and-specifications/national-map-structures-content](https://www.usgs.gov/ngp-standards-and-specifications/national-map-structures-content)
 
 ---
 
-### 5. OGC compliance — the interoperability layer
+### 5. OGC standards — the interoperability layer
 
-The service responds to standard **OGC WFS 2.0.0** requests. OGC compliance is the interoperability layer of the SDI chain — SDI status as a whole comes from governance, authoritative stewardship, metadata, standards, and services together:
+The service responds to standard **OGC WFS 2.0.0** requests. Use of OGC standards forms the interoperability layer of the SDI chain — SDI status as a whole comes from governance, authoritative stewardship, metadata, standards, and services together. This does not imply formal OGC certification of the service itself:
 
-- OGC-compliant clients (QGIS, GeoServer, Python OWSLib, etc.) should be able to query it without custom integration when the service is available
+- OGC-aware tools and libraries (QGIS, Python OWSLib, GeoServer data stores, etc.) should be able to query it without custom integration when the service is available
 - The `GetCapabilities` response documents the service contract in a machine-readable, standardized format
 - Data is filtered and returned using **OGC FES 2.0** (Filter Encoding Standard) predicates
 
@@ -78,12 +78,14 @@ REST service metadata (FType codes, fields, coverage):
 
 | FType | Category | NYC records |
 |---|---|---|
-| 800 | Health and Medical (hospitals) | 71 |
+| 800 | Health and Medical (Hospitals / Medical Centers) | 71 |
 | 740 | Emergency Response and Law Enforcement | 305 |
 
-Record counts come from the POC query output (`poc/ouput`) — not from service metadata. The FType/FCode schema is visible on individual feature layers:
+Record counts come from the POC query output (`poc/output`) — not from service metadata. The FType/FCode schema is visible on individual feature layers:
 - Hospitals (FType 800): [carto.nationalmap.gov/arcgis/rest/services/structures/MapServer/49](https://carto.nationalmap.gov/arcgis/rest/services/structures/MapServer/49)
-- Police Stations / FType 740 schema: [carto.nationalmap.gov/arcgis/rest/services/structures/MapServer/53](https://carto.nationalmap.gov/arcgis/rest/services/structures/MapServer/53)
+- FType 740 includes multiple subtypes. In this POC output, the 305 NYC records split into Police Stations (FCode 74034, layer 53) and Fire Stations (FCode 74026, layer 51). Linking only to layer 53 represents one subtype example:
+  - Police Stations (FCode 74034): [carto.nationalmap.gov/arcgis/rest/services/structures/MapServer/53](https://carto.nationalmap.gov/arcgis/rest/services/structures/MapServer/53)
+  - Fire Stations (FCode 74026): [carto.nationalmap.gov/arcgis/rest/services/structures/MapServer/51](https://carto.nationalmap.gov/arcgis/rest/services/structures/MapServer/51)
 
 ---
 
@@ -97,9 +99,9 @@ This checklist supports the claim: *this POC consumes an authoritative NSDI/SDI 
 | Federal mandate | OMB Circular A-16, NGDA designation |
 | Governing body validation | FGDC, NGDAID 135 |
 | Open data standard | FGDC-STD-019-2014 (RPADS) + USGS Structures content specification |
-| Interoperable service | OGC WFS 2.0.0, OGC FES 2.0 |
+| OGC standards (interoperability) | OGC WFS 2.0.0, OGC FES 2.0 |
 | Discoverable metadata | ScienceBase, data.gov, USGS Science Data Catalog |
-| Machine-readable capabilities | GetCapabilities XML — HTTP 200, verified May 18 2026 |
+| Machine-readable capabilities | GetCapabilities XML — HTTP 200, verified May 18, 2026 |
 
 ---
 
@@ -107,7 +109,7 @@ This checklist supports the claim: *this POC consumes an authoritative NSDI/SDI 
 
 This validates the source and service as part of the U.S. NSDI ecosystem. It does not prove:
 
-- **NYC subset completeness** — only records with NYC-range ZIP codes were retrieved; coverage gaps may exist
-- **Positional accuracy** — geometries were null in the WFS response; coordinates are not verified
+- **NYC subset completeness** — records are filtered by ZIP code prefix (100–104, 112–114, 116). This excludes prefix `111`, which covers parts of western Queens including Astoria and Long Island City. Other valid NYC ZIP ranges not in this list may also be absent. Coverage gaps should be verified against a complete NYC ZIP code reference before drawing conclusions about spatial completeness
+- **Positional accuracy** — geometry parsing was not validated in the original POC output; the live WFS does return GML point coordinates (e.g. `<gml:pos>40.64638524 -74.02039945</gml:pos>`), but positional accuracy against ground truth has not been verified
 - **Real-time freshness** — REST service metadata states data was last refreshed April 2026; individual records carry their own `LOADDATE`
 - **Guaranteed service uptime** — the WFS endpoint returned 504 in at least one check during the POC period; federal services do not guarantee SLA
