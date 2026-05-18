@@ -24,8 +24,12 @@ from streamlit_folium import st_folium
 from app.components.distances import compute_nearest_distances, haversine_np
 from app.components.filters import (
     get_filtered_data,
+    get_healthcare,
+    get_offices,
     get_police_stations,
+    get_schools,
     get_transport_stations,
+    get_usgs_law_enforcement,
 )
 from config.settings import CITY_CONFIGS, DEFAULT_CITY
 
@@ -34,6 +38,10 @@ st.header("Análisis Comparativo: Crímenes vs. Infraestructura")
 df = get_filtered_data()
 police_df = get_police_stations()
 transport_df = get_transport_stations()
+healthcare_df = get_healthcare()
+schools_df = get_schools()
+offices_df = get_offices()
+usgs_law_df = get_usgs_law_enforcement()
 
 center = CITY_CONFIGS[DEFAULT_CITY].default_center
 
@@ -264,6 +272,72 @@ if has_transport:
 
 
 # =========================================================================
+# 3b. Crime Density Around New Infrastructure Types
+# =========================================================================
+
+_NEW_INFRA = [
+    ("Salud (hospitales + centros)", healthcare_df, "healthcare"),
+    ("Escuelas federales", schools_df, "schools"),
+    ("Oficinas federales", offices_df, "offices"),
+    ("USGS Fuerzas del Orden (federal)", usgs_law_df, "usgs_law_enforcement"),
+]
+
+for _label, _infra_df, _key in _NEW_INFRA:
+    if _infra_df is None or _infra_df.is_empty():
+        continue
+
+    st.subheader(f"Densidad de crímenes alrededor de: {_label}")
+
+    _radius_m = st.slider(
+        f"Radio de análisis — {_label} (metros)",
+        min_value=100, max_value=2000, value=500, step=100,
+        key=f"radius_{_key}",
+    )
+
+    _SAMPLE = 30_000
+    _sample = geo_df.sample(n=min(_SAMPLE, len(geo_df)), seed=42)
+    _c_lats = _sample["latitude"].to_numpy()
+    _c_lons = _sample["longitude"].to_numpy()
+    _i_lats = _infra_df["lat"].to_numpy()
+    _i_lons = _infra_df["lon"].to_numpy()
+
+    _dist_matrix = haversine_np(
+        _c_lats[:, None], _c_lons[:, None],
+        _i_lats[None, :], _i_lons[None, :],
+    )
+    _counts = (_dist_matrix <= _radius_m).sum(axis=0)
+
+    _rows = []
+    for _i in range(len(_i_lats)):
+        _rows.append({
+            "name": _infra_df["name"][_i] or f"Facility {_i}",
+            "facility_type": _infra_df["facility_type"][_i] if "facility_type" in _infra_df.columns else _label,
+            "lat": float(_i_lats[_i]),
+            "lon": float(_i_lons[_i]),
+            "crimes_nearby": int(_counts[_i]),
+        })
+
+    _station_df = pl.DataFrame(_rows)
+    _top = _station_df.sort("crimes_nearby", descending=True).head(20)
+
+    _fig = px.bar(
+        _top.to_pandas(),
+        y="name",
+        x="crimes_nearby",
+        color="facility_type" if "facility_type" in _top.columns else None,
+        orientation="h",
+        labels={
+            "crimes_nearby": f"Crímenes en radio de {_radius_m}m",
+            "name": "Instalación",
+            "facility_type": "Tipo",
+        },
+        title=f"Top 20 — {_label} con más crímenes en {_radius_m}m",
+    )
+    _fig.update_layout(yaxis=dict(autorange="reversed"))
+    st.plotly_chart(_fig, width="stretch", key=f"chart_{_key}")
+
+
+# =========================================================================
 # 4. Interactive Map: Crime Hotspots + Infrastructure
 # =========================================================================
 st.subheader("Mapa combinado: crímenes + infraestructura")
@@ -315,6 +389,73 @@ if has_transport:
             popup=f"<b>{row.get('name', 'N/A')}</b><br>Tipo: {row.get('transport_type', 'N/A')}",
         ).add_to(transport_group)
     transport_group.add_to(m)
+
+# Healthcare layer
+if healthcare_df is not None and not healthcare_df.is_empty():
+    hc_group = folium.FeatureGroup(name="Salud (hospitales + centros)", show=False)
+    for row in healthcare_df.iter_rows(named=True):
+        color = "red" if row.get("facility_type") == "Hospital" else "lightred"
+        folium.CircleMarker(
+            location=[row["lat"], row["lon"]],
+            radius=5,
+            color=color,
+            fill=True,
+            fill_color=color,
+            fill_opacity=0.8,
+            popup=f"<b>{row.get('name', 'N/A')}</b><br>{row.get('facility_type', '')}<br>{row.get('agency', '')}",
+        ).add_to(hc_group)
+    hc_group.add_to(m)
+
+# Schools layer
+if schools_df is not None and not schools_df.is_empty():
+    sch_group = folium.FeatureGroup(name="Escuelas (federales)", show=False)
+    for row in schools_df.iter_rows(named=True):
+        folium.CircleMarker(
+            location=[row["lat"], row["lon"]],
+            radius=5,
+            color="darkgreen",
+            fill=True,
+            fill_color="darkgreen",
+            fill_opacity=0.8,
+            popup=f"<b>{row.get('name', 'N/A')}</b><br>{row.get('agency', '')}",
+        ).add_to(sch_group)
+    sch_group.add_to(m)
+
+# Offices layer
+if offices_df is not None and not offices_df.is_empty():
+    off_group = folium.FeatureGroup(name="Oficinas federales", show=False)
+    for row in offices_df.iter_rows(named=True):
+        folium.CircleMarker(
+            location=[row["lat"], row["lon"]],
+            radius=4,
+            color="gray",
+            fill=True,
+            fill_color="gray",
+            fill_opacity=0.7,
+            popup=f"<b>{row.get('name', 'N/A')}</b><br>{row.get('agency', '')}",
+        ).add_to(off_group)
+    off_group.add_to(m)
+
+# USGS Law Enforcement layer (authoritative federal data)
+if usgs_law_df is not None and not usgs_law_df.is_empty():
+    usgs_group = folium.FeatureGroup(name="USGS Fuerzas del Orden (federal)", show=False)
+    for row in usgs_law_df.iter_rows(named=True):
+        if row["lat"] is None or row["lon"] is None:
+            continue
+        folium.CircleMarker(
+            location=[row["lat"], row["lon"]],
+            radius=6,
+            color="darkblue",
+            fill=True,
+            fill_color="darkblue",
+            fill_opacity=0.85,
+            popup=(
+                f"<b>{row.get('name', 'N/A')}</b><br>"
+                f"USGS • {row.get('facility_type', '')}<br>"
+                f"{row.get('address', '')}, {row.get('zipcode', '')}"
+            ),
+        ).add_to(usgs_group)
+    usgs_group.add_to(m)
 
 folium.LayerControl(collapsed=False).add_to(m)
 st_folium(m, width=None, height=650, key="comparative_map")

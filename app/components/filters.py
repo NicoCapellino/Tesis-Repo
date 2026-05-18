@@ -38,6 +38,26 @@ def get_transport_stations() -> pl.DataFrame | None:
     return st.session_state.get("transport_stations")
 
 
+def get_healthcare() -> pl.DataFrame | None:
+    """Return healthcare facility data from session state."""
+    return st.session_state.get("healthcare")
+
+
+def get_schools() -> pl.DataFrame | None:
+    """Return school data from session state."""
+    return st.session_state.get("schools")
+
+
+def get_offices() -> pl.DataFrame | None:
+    """Return federal office data from session state."""
+    return st.session_state.get("offices")
+
+
+def get_usgs_law_enforcement() -> pl.DataFrame | None:
+    """Return USGS law enforcement facility data from session state."""
+    return st.session_state.get("usgs_law_enforcement")
+
+
 def offense_type_filter(df: pl.DataFrame, *, key: str = "offense_filter") -> list[str]:
     """Render a multi-select for offense description and return selected values.
 

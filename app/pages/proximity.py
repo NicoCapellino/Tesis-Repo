@@ -24,28 +24,67 @@ import streamlit as st
 from app.components.distances import add_distance_column
 from app.components.filters import (
     get_filtered_data,
+    get_healthcare,
+    get_offices,
     get_police_stations,
+    get_schools,
     get_transport_stations,
+    get_usgs_law_enforcement,
 )
 
-st.header("Proximidad: Crímenes Cerca vs. Lejos de Comisarías")
+st.header("Proximidad: Crímenes Cerca vs. Lejos de Infraestructura")
 
 df = get_filtered_data()
 police_df = get_police_stations()
 transport_df = get_transport_stations()
+healthcare_df = get_healthcare()
+schools_df = get_schools()
+offices_df = get_offices()
+usgs_law_df = get_usgs_law_enforcement()
 
-if police_df is None or police_df.is_empty():
+# Build available infrastructure options
+_INFRA_OPTIONS: dict[str, pl.DataFrame | None] = {
+    "Comisarías de policía": police_df,
+    "Transporte público": transport_df,
+    "Salud (hospitales + centros)": healthcare_df,
+    "Escuelas federales": schools_df,
+    "Oficinas federales": offices_df,
+    "USGS Fuerzas del Orden (federal)": usgs_law_df,
+}
+_available = {k: v for k, v in _INFRA_OPTIONS.items() if v is not None and not v.is_empty()}
+
+if not _available:
     st.warning(
-        "Datos de comisarías no disponibles. "
+        "No hay datos de infraestructura disponibles. "
         "Ejecutá el pipeline primero: `docker-compose run --rm pipeline`"
     )
     st.stop()
 
 # ── Controles ────────────────────────────────────────────────────────────────
 st.markdown(
-    "Ajustá el umbral de distancia para definir qué se considera *cerca* "
-    "de una comisaría de policía. Los gráficos se actualizan automáticamente."
+    "Seleccioná el tipo de infraestructura y ajustá el umbral de distancia "
+    "para definir qué se considera *cerca*. Los gráficos se actualizan automáticamente."
 )
+
+selected_infra = st.selectbox(
+    "Infraestructura de referencia",
+    options=list(_available.keys()),
+    index=0,
+    help="El análisis CERCA/LEJOS se calcula respecto a esta infraestructura.",
+)
+
+# Resolve to the right lat/lon column names (police/transport use lat/lon, FRPP also uses lat/lon)
+_ref_df = _available[selected_infra]
+_ref_label = selected_infra
+
+# Normalize: ensure lat/lon columns exist (police_df and transport_df already have lat/lon)
+if "lat" not in _ref_df.columns or "lon" not in _ref_df.columns:
+    st.error(f"El dataset de '{selected_infra}' no tiene columnas lat/lon.")
+    st.stop()
+
+# Override police_df for downstream logic so the rest of the page works generically
+police_df = _ref_df
+
 threshold_km = st.slider(
     "Umbral de distancia (km)",
     min_value=0.1, max_value=3.0, value=0.5, step=0.1,
@@ -54,8 +93,8 @@ threshold_km = st.slider(
 
 SAMPLE_N = 20_000
 
-# ── Calcular distancias a comisarías ────────────────────────────────────────
-@st.cache_data(ttl=3600, show_spinner="Calculando distancias a comisarías...")
+# ── Calcular distancias a infraestructura seleccionada ───────────────────────
+@st.cache_data(ttl=3600, show_spinner="Calculando distancias...")
 def _get_police_distances(
     year_filter: tuple[int, ...],
     borough_filter: tuple[str, ...],
@@ -82,8 +121,8 @@ sample_df = _get_police_distances(
 
 # Classify CERCA / LEJOS based on the slider threshold
 threshold_m = threshold_km * 1000
-cerca_label = f"CERCA (< {threshold_km} km)"
-lejos_label = f"LEJOS (≥ {threshold_km} km)"
+cerca_label = f"CERCA (< {threshold_km} km) — {_ref_label}"
+lejos_label = f"LEJOS (≥ {threshold_km} km) — {_ref_label}"
 
 sample_df = sample_df.with_columns(
     pl.when(pl.col("dist_police_m") < threshold_m)
@@ -110,11 +149,11 @@ with col4:
 st.markdown("---")
 
 # ── Boxplot 1: Distribución horaria (UNIFICADO) ─────────────────────────────
-st.subheader("Distribución horaria: CERCA vs. LEJOS de comisaría")
+st.subheader(f"Distribución horaria: CERCA vs. LEJOS de {_ref_label}")
 st.caption(
-    "¿Los crímenes cometidos cerca de una comisaría ocurren a horas distintas "
+    f"¿Los crímenes cometidos cerca de {_ref_label} ocurren a horas distintas "
     "que los cometidos lejos? Un desplazamiento en la distribución podría indicar "
-    "que la presencia policial disuade crímenes en ciertos horarios. "
+    "un efecto disuasorio o de concentración en ciertos horarios. "
     "Cada punto representa un crimen individual."
 )
 
@@ -135,7 +174,7 @@ if not hour_df.is_empty():
             lejos_label: "#F44336",
         },
         labels={"hour": "Hora del día (0-23)", "grupo_policia": "Proximidad a Comisaría"},
-        title="Distribución horaria: CERCA vs. LEJOS de comisaría",
+        title=f"Distribución horaria: CERCA vs. LEJOS de {_ref_label}",
         category_orders={"grupo_policia": [cerca_label, lejos_label]},
     )
     fig_hour.update_traces(
@@ -223,7 +262,7 @@ if transport_df is not None and not transport_df.is_empty():
             lejos_label: "#F44336",
         },
         labels={"dist_transport_km": "Distancia a transporte (km)", "grupo_policia": "Proximidad a Comisaría"},
-        title="Distancia a transporte público: CERCA vs. LEJOS de comisaría",
+        title=f"Distancia a transporte público: CERCA vs. LEJOS de {_ref_label}",
         category_orders={"grupo_policia": [cerca_label, lejos_label]},
     )
     fig_transport.update_traces(
@@ -301,10 +340,10 @@ if transport_df is not None and not transport_df.is_empty():
 
 # ── Boxplot 3: Distancia a comisaría por tipo de crimen ─────────────────────
 st.markdown("---")
-st.subheader("Distancia a comisaría por tipo de crimen (top 10)")
+st.subheader(f"Distancia a {_ref_label} por tipo de crimen (top 10)")
 st.caption(
-    "¿Qué tipos de crimen tienden a ocurrir más lejos de las comisarías? "
-    "Tipos con mediana alta sugieren menor cobertura policial para ese delito."
+    f"¿Qué tipos de crimen tienden a ocurrir más lejos de {_ref_label}? "
+    "Tipos con mediana alta sugieren menor cobertura para ese delito."
 )
 
 crime_dist_df = sample_df.filter(pl.col("offense_description").is_not_null()).with_columns(
@@ -333,7 +372,7 @@ if not crime_dist_top10.is_empty():
             "dist_police_km": "Distancia a comisaría (km)",
             "offense_description": "Tipo de crimen",
         },
-        title="Distribución de distancia a comisaría por tipo de crimen",
+        title=f"Distribución de distancia a {_ref_label} por tipo de crimen",
     )
     fig_crime_dist.update_traces(boxmean=True)
     fig_crime_dist.update_layout(
@@ -357,7 +396,7 @@ police_desc = dist_describe_df["dist_police_km"].describe()
 desc_data = {"Métrica": ["count", "mean", "std", "min", "25%", "50%", "75%", "max"]}
 
 stats_police = dist_describe_df["dist_police_km"]
-desc_data["Dist. Policía (km)"] = [
+desc_data[f"Dist. {_ref_label[:20]} (km)"] = [
     f"{len(stats_police):,}",
     f"{stats_police.mean():.3f}",
     f"{stats_police.std():.3f}",

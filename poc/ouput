@@ -1,0 +1,126 @@
+shape: (5, 2)
+┌───────────────┬───────┐
+│ borough       ┆ count │
+│ ---           ┆ ---   │
+│ str           ┆ u32   │
+╞═══════════════╪═══════╡
+│ Brooklyn      ┆ 92    │
+│ Manhattan     ┆ 74    │
+│ Queens        ┆ 60    │
+│ Bronx         ┆ 52    │
+│ Staten Island ┆ 27    │
+└───────────────┴───────┘
+
+============================================================
+  4. Completeness Check
+============================================================
+
+--- Completeness: Hospitals NYC (n=71) ---
+shape: (5, 4)
+┌──────────┬────────┬─────────┬────────────┐
+│ field    ┆ filled ┆ missing ┆ complete_% │
+│ ---      ┆ ---    ┆ ---     ┆ ---        │
+│ str      ┆ i64    ┆ i64     ┆ f64        │
+╞══════════╪════════╪═════════╪════════════╡
+│ NAME     ┆ 71     ┆ 0       ┆ 100.0      │
+│ ADDRESS  ┆ 71     ┆ 0       ┆ 100.0      │
+│ CITY     ┆ 71     ┆ 0       ┆ 100.0      │
+│ ZIPCODE  ┆ 71     ┆ 0       ┆ 100.0      │
+│ LOADDATE ┆ 71     ┆ 0       ┆ 100.0      │
+└──────────┴────────┴─────────┴────────────┘
+
+--- Completeness: Law Enforcement NYC (n=305) ---
+shape: (5, 4)
+┌──────────┬────────┬─────────┬────────────┐
+│ field    ┆ filled ┆ missing ┆ complete_% │
+│ ---      ┆ ---    ┆ ---     ┆ ---        │
+│ str      ┆ i64    ┆ i64     ┆ f64        │
+╞══════════╪════════╪═════════╪════════════╡
+│ NAME     ┆ 305    ┆ 0       ┆ 100.0      │
+│ ADDRESS  ┆ 305    ┆ 0       ┆ 100.0      │
+│ CITY     ┆ 305    ┆ 0       ┆ 100.0      │
+│ ZIPCODE  ┆ 305    ┆ 0       ┆ 100.0      │
+│ LOADDATE ┆ 305    ┆ 0       ┆ 100.0      │
+└──────────┴────────┴─────────┴────────────┘
+
+============================================================
+  5. Records Missing ADDRESS
+============================================================
+
+--- Hospitals: missing ADDRESS (0 records) ---
+
+--- Law Enforcement: missing ADDRESS (0 records) ---
+
+============================================================
+  6. Full NYC Record List
+============================================================
+
+=== Hospitals ===
+shape: (71, 5)
+┌─────────────────────┬───────────────┬─────────────────────┬─────────┬────────────────────┐
+│ NAME                ┆ borough       ┆ ADDRESS             ┆ ZIPCODE ┆ LOADDATE           │
+│ ---                 ┆ ---           ┆ ---                 ┆ ---     ┆ ---                │
+│ str                 ┆ str           ┆ str                 ┆ str     ┆ str                │
+╞═════════════════════╪═══════════════╪═════════════════════╪═════════╪════════════════════╡
+│ James J Peters      ┆ Bronx         ┆ 130 West            ┆ 10468   ┆ 2017-08-04T00:00:0 │
+│ Veterans Affair…    ┆               ┆ Kingsbridge Road    ┆         ┆ 0                  │
+│ Montefiore Medical  ┆ Bronx         ┆ 111 East 210th      ┆ 10467   ┆ 2021-12-16T00:00:0 │
+│ Center West…        ┆               ┆ Street              ┆         ┆ 0                  │
+│ Montefiore Medical  ┆ Bronx         ┆ 600 East 233rd      ┆ 10466   ┆ 2021-12-01T00:00:0 │
+│ Center - Wa…        ┆               ┆ Street              ┆         ┆ 0                  │
+│ Calvary Hospital    ┆ Bronx         ┆ 1740 Eastchester    ┆ 10461   ┆ 2017-08-04T00:00:0 │
+│                     ┆               ┆ Road                ┆         ┆ 0                  │
+│ North Central Bronx ┆ Bronx         ┆ 3424 Kossuth Avenue ┆ 10467   ┆ 2017-02-02T00:00:0 │
+│ Hospital            ┆               ┆                     ┆         ┆ 0                  │
+│ …                   ┆ …             ┆ …                   ┆ …       ┆ …                  │
+│ Saint Mary's        ┆ Queens        ┆ 29 - 01 216th       ┆ 11360   ┆ 2021-07-01T00:00:0 │
+│ Hospital for Chil…  ┆               ┆ Street              ┆         ┆ 0                  │
+│ Richmond University ┆ Staten Island ┆ 355 Bard Avenue     ┆ 10310   ┆ 2023-08-04T00:00:0 │
+│ Medical Ce…         ┆               ┆                     ┆         ┆ 0                  │
+│ Staten Island       ┆ Staten Island ┆ 475 Seaview Avenue  ┆ 10305   ┆ 2022-08-24T00:00:0 │
+│ University Hospi…   ┆               ┆                     ┆         ┆ 0                  │
+│ Staten Island       ┆ Staten Island ┆ 375 Seguine Avenue  ┆ 10309   ┆ 2017-06-20T00:00:0 │
+│ University Hospi…   ┆               ┆                     ┆         ┆ 0                  │
+│ South Beach         ┆ Staten Island ┆ 777 Seaview Avenue  ┆ 10305   ┆ 2025-05-28T18:19:3 │
+│ Psychiatric Center  ┆               ┆                     ┆         ┆ 7                  │
+└─────────────────────┴───────────────┴─────────────────────┴─────────┴────────────────────┘
+
+=== Law Enforcement ===
+shape: (305, 5)
+┌─────────────────────┬───────────────┬─────────────────────┬─────────┬────────────────────┐
+│ NAME                ┆ borough       ┆ ADDRESS             ┆ ZIPCODE ┆ LOADDATE           │
+│ ---                 ┆ ---           ┆ ---                 ┆ ---     ┆ ---                │
+│ str                 ┆ str           ┆ str                 ┆ str     ┆ str                │
+╞═════════════════════╪═══════════════╪═════════════════════╪═════════╪════════════════════╡
+│ New York Police     ┆ Bronx         ┆ 830 Washington      ┆ 10451   ┆ 2017-03-23T00:00:0 │
+│ Department 42n…     ┆               ┆ Avenue              ┆         ┆ 0                  │
+│ Bronx Task Force    ┆ Bronx         ┆ 1278 Sedgwick       ┆ 10452   ┆ 2016-06-30T08:56:1 │
+│ Police Statio…      ┆               ┆ Avenue              ┆         ┆ 4                  │
+│ New York Police     ┆ Bronx         ┆ 2121 Eastchester    ┆ 10461   ┆ 2016-08-12T12:31:4 │
+│ Department 49t…     ┆               ┆ Road                ┆         ┆ 8                  │
+│ New York Police     ┆ Bronx         ┆ 2794 Randall Avenue ┆ 10465   ┆ 2016-08-12T12:31:4 │
+│ Department Hou…     ┆               ┆                     ┆         ┆ 8                  │
+│ New York Police     ┆ Bronx         ┆ 2120 Ryer Avenue    ┆ 10457   ┆ 2017-03-23T00:00:0 │
+│ Department 46t…     ┆               ┆                     ┆         ┆ 0                  │
+│ …                   ┆ …             ┆ …                   ┆ …       ┆ …                  │
+│ Fire Department New ┆ Staten Island ┆ 74 Broad Street     ┆ 10304   ┆ 2019-12-02T00:00:0 │
+│ York Engin…         ┆               ┆                     ┆         ┆ 0                  │
+│ New York Fire       ┆ Staten Island ┆ 256 Hylan Boulevard ┆ 10305   ┆ 2017-06-26T00:00:0 │
+│ Department Engin…   ┆               ┆                     ┆         ┆ 0                  │
+│ Fire Department New ┆ Staten Island ┆ 1100 Rossville      ┆ 10309   ┆ 2019-12-18T00:00:0 │
+│ York Engin…         ┆               ┆ Avenue              ┆         ┆ 0                  │
+│ New York Fire       ┆ Staten Island ┆ 278 McClean Avenue  ┆ 10305   ┆ 2020-06-18T00:00:0 │
+│ Department Engin…   ┆               ┆                     ┆         ┆ 0                  │
+│ Fire Department New ┆ Staten Island ┆ 14 Brighton Avenue  ┆ 10301   ┆ 2019-12-02T00:00:0 │
+│ York Engin…         ┆               ┆                     ┆         ┆ 0                  │
+└─────────────────────┴───────────────┴─────────────────────┴─────────┴────────────────────┘
+
+============================================================
+  7. Export
+============================================================
+  Saved poc/hospitals_nyc.parquet       (71 records)
+  Saved poc/law_enforcement_nyc.parquet (305 records)
+felipebriosso@192 Tesis-Repo % 
+ *  History restored 
+
+felipebriosso@Felipes-MacBook-Pro Tesis-Repo % 
