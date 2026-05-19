@@ -1,0 +1,71 @@
+name: CI — Lint & Type Check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "app/**"
+      - "config/**"
+      - "tests/**"
+      - "pyproject.toml"
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "app/**"
+      - "config/**"
+      - "tests/**"
+      - "pyproject.toml"
+
+jobs:
+  lint:
+    name: Ruff Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Ruff check
+        run: ruff check src/ app/ config/ tests/
+
+      - name: Ruff format check
+        run: ruff format --check src/ app/ config/ tests/
+
+  typecheck:
+    name: Mypy Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install .[dev]
+
+      - name: Run mypy
+        run: mypy src/ config/
+
+  test:
+    name: Pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install .[dev]
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short

@@ -23,3 +23,4 @@ __pycache__/
 
 # Data directory (managed via DVC or pipeline)
 data/
+Tesis/
