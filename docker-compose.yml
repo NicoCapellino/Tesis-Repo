@@ -20,8 +20,7 @@ services:
     container_name: nyc-pipeline
     command: ["python", "-m", "src.pipeline"]
     volumes:
-      - pipeline-data:/app/data
-      - ./data/reference:/app/data/reference
+      - ./data:/app/data
     environment:
       - NYC_PIPELINE_PAGE_SIZE=50000
       - NYC_PIPELINE_START_YEAR=2020
@@ -33,8 +32,11 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      - pipeline-data:/app/data
-      - ./data/reference:/app/data/reference
+      - ./data:/app/data
+    deploy:
+      resources:
+        limits:
+          memory: 4G
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
       interval: 30s
@@ -48,5 +50,3 @@ services:
     container_name: nyc-tests
     command: ["python", "-m", "pytest", "tests/", "-v", "--tb=short"]
 
-volumes:
-  pipeline-data:

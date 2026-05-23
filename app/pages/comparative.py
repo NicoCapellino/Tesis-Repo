@@ -22,6 +22,18 @@ from folium.plugins import HeatMap
 from streamlit_folium import st_folium
 
 from app.components.distances import compute_nearest_distances, haversine_np
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _infra_dist_matrix(
+    c_lats: tuple[float, ...], c_lons: tuple[float, ...],
+    i_lats: tuple[float, ...], i_lons: tuple[float, ...],
+) -> np.ndarray:
+    c = np.array(c_lats)
+    cl = np.array(c_lons)
+    il = np.array(i_lats)
+    iln = np.array(i_lons)
+    return haversine_np(c[:, None], cl[:, None], il[None, :], iln[None, :])
 from app.components.filters import (
     get_filtered_data,
     get_healthcare,
@@ -47,8 +59,16 @@ usgs_fire_df = get_usgs_fire()
 
 center = CITY_CONFIGS[DEFAULT_CITY].default_center
 
+# Prefer USGS police (authoritative) over OSM police for primary analyses
+primary_police_df = (
+    usgs_police_df
+    if usgs_police_df is not None and not usgs_police_df.is_empty()
+    else police_df
+)
+_police_source = "USGS" if primary_police_df is usgs_police_df else "OSM"
+
 # Check if infrastructure data is available
-has_police = police_df is not None and not police_df.is_empty()
+has_police = primary_police_df is not None and not primary_police_df.is_empty()
 has_transport = transport_df is not None and not transport_df.is_empty()
 
 if not has_police and not has_transport:
@@ -101,8 +121,8 @@ if has_police:
         return boroughs
 
     station_boroughs = _assign_station_boroughs(
-        tuple(police_df["lat"].to_list()),
-        tuple(police_df["lon"].to_list()),
+        tuple(primary_police_df["lat"].to_list()),
+        tuple(primary_police_df["lon"].to_list()),
     )
 
     stations_by_borough = (
@@ -167,8 +187,8 @@ if has_police:
 
     crime_lats = sample_df["latitude"].to_numpy()
     crime_lons = sample_df["longitude"].to_numpy()
-    station_lats = police_df["lat"].to_numpy()
-    station_lons = police_df["lon"].to_numpy()
+    station_lats = primary_police_df["lat"].to_numpy()
+    station_lons = primary_police_df["lon"].to_numpy()
 
     distances_m = compute_nearest_distances(
         tuple(crime_lats.tolist()), tuple(crime_lons.tolist()),
@@ -212,18 +232,17 @@ if has_transport:
     )
 
     # Sample crimes for performance
-    TRANSPORT_SAMPLE = 30_000
+    TRANSPORT_SAMPLE = 10_000
     transport_sample = geo_df.sample(n=min(TRANSPORT_SAMPLE, len(geo_df)), seed=42)
     c_lats = transport_sample["latitude"].to_numpy()
     c_lons = transport_sample["longitude"].to_numpy()
     t_lats = transport_df["lat"].to_numpy()
     t_lons = transport_df["lon"].to_numpy()
 
-    # Vectorized: compute all crime-to-station distances at once via broadcasting
-    # Shape: (n_crimes, n_stations)
-    dist_matrix = haversine_np(
-        c_lats[:, None], c_lons[:, None],
-        t_lats[None, :], t_lons[None, :],
+    # Cached matrix — only computed once per session, slider changes are instant
+    dist_matrix = _infra_dist_matrix(
+        tuple(c_lats.tolist()), tuple(c_lons.tolist()),
+        tuple(t_lats.tolist()), tuple(t_lons.tolist()),
     )
     crimes_counts = (dist_matrix <= radius_m).sum(axis=0)
 
@@ -281,7 +300,8 @@ _NEW_INFRA = [
     ("Salud (hospitales + centros)", healthcare_df, "healthcare"),
     ("Escuelas federales", schools_df, "schools"),
     ("Oficinas federales", offices_df, "offices"),
-    ("USGS Fuerzas del Orden (federal)", usgs_law_df, "usgs_law_enforcement"),
+    ("USGS Comisarías (federal)", usgs_police_df, "usgs_police"),
+    ("USGS Estaciones de bomberos", usgs_fire_df, "usgs_fire"),
 ]
 
 for _label, _infra_df, _key in _NEW_INFRA:
@@ -296,16 +316,16 @@ for _label, _infra_df, _key in _NEW_INFRA:
         key=f"radius_{_key}",
     )
 
-    _SAMPLE = 30_000
+    _SAMPLE = 10_000
     _sample = geo_df.sample(n=min(_SAMPLE, len(geo_df)), seed=42)
     _c_lats = _sample["latitude"].to_numpy()
     _c_lons = _sample["longitude"].to_numpy()
     _i_lats = _infra_df["lat"].to_numpy()
     _i_lons = _infra_df["lon"].to_numpy()
 
-    _dist_matrix = haversine_np(
-        _c_lats[:, None], _c_lons[:, None],
-        _i_lats[None, :], _i_lons[None, :],
+    _dist_matrix = _infra_dist_matrix(
+        tuple(_c_lats.tolist()), tuple(_c_lons.tolist()),
+        tuple(_i_lats.tolist()), tuple(_i_lons.tolist()),
     )
     _counts = (_dist_matrix <= _radius_m).sum(axis=0)
 
@@ -355,10 +375,10 @@ heat_group = folium.FeatureGroup(name="Densidad de crímenes", show=True)
 HeatMap(heat_data, radius=8, blur=10, max_zoom=13).add_to(heat_group)
 heat_group.add_to(m)
 
-# Police stations layer
+# Police stations layer (USGS when available, else OSM)
 if has_police:
-    police_group = folium.FeatureGroup(name="Comisarías", show=True)
-    for row in police_df.iter_rows(named=True):
+    police_group = folium.FeatureGroup(name=f"Comisarías ({_police_source})", show=True)
+    for row in primary_police_df.iter_rows(named=True):
         folium.CircleMarker(
             location=[row["lat"], row["lon"]],
             radius=6,
@@ -438,26 +458,26 @@ if offices_df is not None and not offices_df.is_empty():
         ).add_to(off_group)
     off_group.add_to(m)
 
-# USGS Law Enforcement layer (authoritative federal data)
-if usgs_law_df is not None and not usgs_law_df.is_empty():
-    usgs_group = folium.FeatureGroup(name="USGS Fuerzas del Orden (federal)", show=False)
-    for row in usgs_law_df.iter_rows(named=True):
+# USGS Fire Stations layer
+if usgs_fire_df is not None and not usgs_fire_df.is_empty():
+    fire_group = folium.FeatureGroup(name="USGS Estaciones de bomberos", show=False)
+    for row in usgs_fire_df.iter_rows(named=True):
         if row["lat"] is None or row["lon"] is None:
             continue
         folium.CircleMarker(
             location=[row["lat"], row["lon"]],
-            radius=6,
-            color="darkblue",
+            radius=5,
+            color="orange",
             fill=True,
-            fill_color="darkblue",
+            fill_color="orange",
             fill_opacity=0.85,
             popup=(
                 f"<b>{row.get('name', 'N/A')}</b><br>"
-                f"USGS • {row.get('facility_type', '')}<br>"
+                f"USGS • Bomberos<br>"
                 f"{row.get('address', '')}, {row.get('zipcode', '')}"
             ),
-        ).add_to(usgs_group)
-    usgs_group.add_to(m)
+        ).add_to(fire_group)
+    fire_group.add_to(m)
 
 folium.LayerControl(collapsed=False).add_to(m)
 st_folium(m, width=None, height=650, key="comparative_map")

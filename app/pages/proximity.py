@@ -21,7 +21,7 @@ import plotly.express as px
 import polars as pl
 import streamlit as st
 
-from app.components.distances import add_distance_column
+from app.components.distances import add_distance_column, compute_nearest_distances
 from app.components.filters import (
     get_filtered_data,
     get_healthcare,
@@ -44,15 +44,15 @@ offices_df = get_offices()
 usgs_police_df = get_usgs_police()
 usgs_fire_df = get_usgs_fire()
 
-# Build available infrastructure options
+# Build available infrastructure options (USGS sources listed first)
 _INFRA_OPTIONS: dict[str, pl.DataFrame | None] = {
-    "Comisarías de policía (OSM)": police_df,
+    "USGS Comisarías (federal)": usgs_police_df,
+    "USGS Estaciones de bomberos": usgs_fire_df,
     "Transporte público": transport_df,
     "Salud (hospitales + centros)": healthcare_df,
     "Escuelas federales": schools_df,
     "Oficinas federales": offices_df,
-    "USGS Comisarías (federal)": usgs_police_df,
-    "USGS Estaciones de bomberos": usgs_fire_df,
+    "Comisarías de policía (OSM)": police_df,
 }
 _available = {k: v for k, v in _INFRA_OPTIONS.items() if v is not None and not v.is_empty()}
 
@@ -223,24 +223,16 @@ if transport_df is not None and not transport_df.is_empty():
         "policial y de transporte."
     )
 
-    @st.cache_data(ttl=3600, show_spinner="Calculando distancias a transporte...")
-    def _add_transport_distances(
-        police_hash: int,
-        t_lats: tuple[float, ...], t_lons: tuple[float, ...],
-    ) -> pl.DataFrame:
-        base = sample_df.filter(
-            pl.col("latitude").is_not_null() & pl.col("longitude").is_not_null()
-        )
-        return add_distance_column(
-            base, pl.DataFrame({"lat": list(t_lats), "lon": list(t_lons)}),
-            col_name="dist_transport_m",
-        )
-
-    sample_with_transport = _add_transport_distances(
-        police_hash=hash((threshold_km, len(sample_df))),
-        t_lats=tuple(transport_df["lat"].to_list()),
-        t_lons=tuple(transport_df["lon"].to_list()),
+    _valid = sample_df.filter(
+        pl.col("latitude").is_not_null() & pl.col("longitude").is_not_null()
     )
+    _t_dists = compute_nearest_distances(
+        tuple(_valid["latitude"].to_list()),
+        tuple(_valid["longitude"].to_list()),
+        tuple(transport_df["lat"].to_list()),
+        tuple(transport_df["lon"].to_list()),
+    )
+    sample_with_transport = _valid.with_columns(pl.Series("dist_transport_m", _t_dists))
     sample_with_transport = sample_with_transport.with_columns(
         (pl.col("dist_transport_m") / 1000).alias("dist_transport_km"),
         (pl.col("dist_police_m") / 1000).alias("dist_police_km"),
