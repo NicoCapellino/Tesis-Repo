@@ -1,23 +1,14 @@
 """
-Association Rules Page — Reglas de asociación con FP-Growth.
+Association Rules Page V2.
 
-Aplica el algoritmo FP-Growth para descubrir patrones frecuentes entre:
-- Tipo de delito (offense_description)
-- Proximidad a comisarías (CERCA_POLICIA / LEJOS_POLICIA)
-- Proximidad a transporte público (CERCA_TRANSPORTE / LEJOS_TRANSPORTE)
-
-Replica y mejora el análisis del notebook original (PySpark FPGrowth)
-usando mlxtend, adaptado para correr sobre datos Polars sin Spark.
-
-Parámetros ajustables:
-- Umbral de distancia para CERCA/LEJOS
-- Soporte mínimo
-- Confianza mínima
+FP-Growth discovers frequent patterns between offense type and proximity to
+USGS V2 police, fire, and healthcare facilities.
 """
 
 from __future__ import annotations
 
 import gc
+import re
 
 import numpy as np
 import pandas as pd
@@ -33,143 +24,109 @@ from app.components.background import (
     show_progress_or_result,
 )
 from app.components.distances import haversine_np
-from app.components.filters import (
-    get_filtered_data,
-    get_police_stations,
-    get_transport_stations,
-)
+from app.components.filters import get_filtered_data, get_usgs_v2_layers
 
-st.header("Reglas de Asociación — FP-Growth")
+st.header("Reglas de Asociacion V2 - FP-Growth con USGS")
 st.markdown(
-    "FP-Growth descubre qué combinaciones de **tipo de delito** y **proximidad "
-    "a infraestructura** aparecen juntas con mayor frecuencia. "
-    "Una regla del tipo `[TIPO=ROBO] → [LEJOS_POLICIA]` con alta confianza indica "
-    "que los robos tienden a ocurrir lejos de comisarías."
+    "FP-Growth V2 usa exclusivamente infraestructura **USGS V2**. Cada crimen se "
+    "convierte en una transaccion con su tipo de delito y su cercania/lejanía a "
+    "policia, bomberos y salud."
 )
 
 df = get_filtered_data()
-police_df = get_police_stations()
-transport_df = get_transport_stations()
+usgs_layers = get_usgs_v2_layers()
 
-if police_df is None or police_df.is_empty():
-    st.warning("Datos de comisarías no disponibles. Ejecutá el pipeline primero.")
+if not usgs_layers:
+    st.warning("No hay capas USGS V2 disponibles. Ejecuta el pipeline de referencia USGS.")
     st.stop()
 
-# ── Controles ────────────────────────────────────────────────────────────────
-with st.expander("Parámetros del algoritmo", expanded=True):
+
+def _slug(label: str) -> str:
+    return re.sub(r"[^A-Z0-9]+", "_", label.upper()).strip("_")
+
+
+with st.expander("Parametros del algoritmo V2", expanded=True):
     col1, col2, col3 = st.columns(3)
     with col1:
         min_support = st.slider(
-            "Soporte mínimo", min_value=0.005, max_value=0.10,
-            value=0.01, step=0.005, format="%.3f",
-            help="Fracción mínima de transacciones que deben contener el itemset.",
+            "Soporte minimo",
+            min_value=0.005,
+            max_value=0.10,
+            value=0.01,
+            step=0.005,
+            format="%.3f",
         )
     with col2:
         min_confidence = st.slider(
-            "Confianza mínima", min_value=0.5, max_value=1.0,
-            value=0.7, step=0.05,
-            help="Probabilidad mínima de que el consecuente ocurra dado el antecedente.",
+            "Confianza minima",
+            min_value=0.5,
+            max_value=1.0,
+            value=0.7,
+            step=0.05,
         )
     with col3:
         dist_threshold_km = st.slider(
-            "Umbral CERCA/LEJOS (km)", min_value=0.1, max_value=2.0,
-            value=0.5, step=0.1,
+            "Umbral CERCA/LEJOS USGS V2 (km)",
+            min_value=0.1,
+            max_value=2.0,
+            value=0.5,
+            step=0.1,
         )
 
 SAMPLE_N = 10_000
 TOP_OFFENSE_TYPES = 15
 
 
-# ── Función de cómputo para background thread ────────────────────────────────
-# IMPORTANTE: Esta función NO debe llamar a ninguna API de Streamlit
-# (st.*, @st.cache_data, session_state). Solo usa numpy/pandas/polars/mlxtend.
-
-def _compute_associations(
+def _compute_associations_v2(
     task: BackgroundTask,
     crime_lats: np.ndarray,
     crime_lons: np.ndarray,
     offense_descriptions: list[str],
-    p_lats: np.ndarray,
-    p_lons: np.ndarray,
-    t_lats: np.ndarray | None,
-    t_lons: np.ndarray | None,
+    layers_payload: list[tuple[str, np.ndarray, np.ndarray]],
     threshold_m: float,
     support: float,
     confidence: float,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Compute FP-Growth in background thread. No Streamlit API calls."""
-
+    """Compute FP-Growth in a background thread. No Streamlit API calls."""
     n = len(crime_lats)
+    transactions = [[f"TIPO={desc}"] for desc in offense_descriptions]
 
-    # Paso 1: Distancias a comisarías
-    task.update(0.10, f"Paso 1/5: Calculando distancias a {len(p_lats)} comisarías...")
-    dist_police = np.min(
-        haversine_np(
-            crime_lats[:, None], crime_lons[:, None],
-            p_lats[None, :], p_lons[None, :],
-        ),
-        axis=1,
-    )
-
-    # Paso 2: Distancias a transporte (opcional)
-    has_transport = t_lats is not None and len(t_lats) > 0
-    dist_transport = None
-    if has_transport:
-        task.update(0.25, f"Paso 2/5: Calculando distancias a {len(t_lats)} estaciones...")
-        dist_transport = np.min(
+    for idx, (label, layer_lats, layer_lons) in enumerate(layers_payload, start=1):
+        task.update(
+            0.10 + 0.35 * (idx - 1) / max(len(layers_payload), 1),
+            f"Calculando distancias V2 a {label}...",
+        )
+        distances = np.min(
             haversine_np(
-                crime_lats[:, None], crime_lons[:, None],
-                t_lats[None, :], t_lons[None, :],
+                crime_lats[:, None],
+                crime_lons[:, None],
+                layer_lats[None, :],
+                layer_lons[None, :],
             ),
             axis=1,
         )
-    else:
-        task.update(0.25, "Paso 2/5: Sin datos de transporte, salteando...")
+        slug = _slug(label)
+        near_item = f"CERCA_{slug}"
+        far_item = f"LEJOS_{slug}"
+        for i, distance in enumerate(distances):
+            transactions[i].append(near_item if distance < threshold_m else far_item)
+        del distances
+        gc.collect()
 
-    # Paso 3: Construir transacciones vectorizado
-    # IMPORTANTE: usar str() nativo, no np.str_, para compatibilidad con mlxtend 0.24+
-    # (mlxtend intenta int() sobre np.generic, lo que falla con strings)
-    task.update(0.40, "Paso 3/5: Construyendo transacciones...")
-    police_items = [
-        "CERCA_POLICIA" if d < threshold_m else "LEJOS_POLICIA"
-        for d in dist_police
-    ]
-    tipo_items = [f"TIPO={desc}" for desc in offense_descriptions]
-
-    if has_transport and dist_transport is not None:
-        transport_items = [
-            "CERCA_TRANSPORTE" if d < threshold_m else "LEJOS_TRANSPORTE"
-            for d in dist_transport
-        ]
-        transactions = [
-            (tipo_items[i], police_items[i], transport_items[i])
-            for i in range(n)
-        ]
-    else:
-        transactions = [
-            (tipo_items[i], police_items[i])
-            for i in range(n)
-        ]
-
-    del dist_police, dist_transport, police_items, tipo_items
-    gc.collect()
-
-    # Paso 4: One-hot encoding + FP-Growth
-    task.update(0.55, "Paso 4/5: Codificando y ejecutando FP-Growth...")
-    all_items = sorted(set(item for t in transactions for item in t))
+    task.update(0.50, "Codificando transacciones V2...")
+    all_items = sorted(set(item for transaction in transactions for item in transaction))
     item_idx = {item: i for i, item in enumerate(all_items)}
-    n_items = len(all_items)
 
-    # Build boolean array directly (más eficiente que TransactionEncoder)
-    onehot = np.zeros((n, n_items), dtype=bool)
-    for i, t in enumerate(transactions):
-        for item in t:
+    onehot = np.zeros((n, len(all_items)), dtype=bool)
+    for i, transaction in enumerate(transactions):
+        for item in transaction:
             onehot[i, item_idx[item]] = True
 
     df_onehot = pd.DataFrame(onehot, columns=all_items)
     del onehot, transactions
     gc.collect()
 
+    task.update(0.70, "Ejecutando FP-Growth V2...")
     itemsets = fpgrowth(df_onehot, min_support=support, use_colnames=True)
     num_transactions = len(df_onehot)
     del df_onehot
@@ -178,9 +135,7 @@ def _compute_associations(
     if itemsets.empty:
         return itemsets, pd.DataFrame()
 
-    # Paso 5: Generar reglas
-    task.update(0.80, "Paso 5/5: Generando reglas de asociación...")
-    # mlxtend ≥0.24 requiere num_itemsets para calcular métricas correctamente
+    task.update(0.88, "Generando reglas de asociacion V2...")
     rules = association_rules(
         itemsets,
         metric="confidence",
@@ -191,14 +146,12 @@ def _compute_associations(
     return itemsets, rules
 
 
-# ── Preparar datos en main thread ─────────────────────────────────────────────
 base = df.filter(
     pl.col("latitude").is_not_null()
     & pl.col("longitude").is_not_null()
     & pl.col("offense_description").is_not_null()
 )
 
-# Limit to top N offense types
 top_offenses = (
     base.group_by("offense_description")
     .len()
@@ -215,50 +168,50 @@ if base.is_empty():
     st.warning("No hay datos disponibles con los filtros actuales.")
     st.stop()
 
-st.caption(f"Transacciones a procesar: {len(base):,} (muestra de hasta {SAMPLE_N:,})")
+st.caption(f"Transacciones V2 a procesar: {len(base):,} (muestra de hasta {SAMPLE_N:,})")
 
-# Extract numpy arrays (thread-safe, no Streamlit dependency)
 crime_lats = base["latitude"].to_numpy()
 crime_lons = base["longitude"].to_numpy()
 offense_descs = base["offense_description"].to_list()
+layers_payload = [
+    (label, layer_df["lat"].to_numpy(), layer_df["lon"].to_numpy())
+    for label, layer_df in usgs_layers.items()
+]
 
-p_lats = police_df["lat"].to_numpy()
-p_lons = police_df["lon"].to_numpy()
-t_lats = transport_df["lat"].to_numpy() if transport_df is not None else None
-t_lons = transport_df["lon"].to_numpy() if transport_df is not None else None
-
-# ── Ejecutar en segundo plano ─────────────────────────────────────────────────
-task = get_task("associations")
+task = get_task("associations_v2")
 params_hash = str(hash((
-    min_support, min_confidence, dist_threshold_km,
-    len(base), SAMPLE_N, TOP_OFFENSE_TYPES,
+    min_support,
+    min_confidence,
+    dist_threshold_km,
+    len(base),
+    SAMPLE_N,
+    TOP_OFFENSE_TYPES,
+    tuple((label, len(layer_df)) for label, layer_df in usgs_layers.items()),
     tuple(sorted(df["year"].drop_nulls().unique().to_list())),
 )))
 
 if needs_recompute(task, params_hash):
     task.start(
-        _compute_associations,
-        crime_lats, crime_lons, offense_descs,
-        p_lats, p_lons, t_lats, t_lons,
+        _compute_associations_v2,
+        crime_lats,
+        crime_lons,
+        offense_descs,
+        layers_payload,
         dist_threshold_km * 1000,
-        min_support, min_confidence,
+        min_support,
+        min_confidence,
     )
 
 if not show_progress_or_result(task):
     st.stop()
 
-# ── Resultados disponibles ────────────────────────────────────────────────────
 itemsets_df, rules_df = task.result
 
-# ── Resultados: Itemsets frecuentes ─────────────────────────────────────────
 st.markdown("---")
-st.subheader("Itemsets frecuentes")
+st.subheader("V2: itemsets frecuentes")
 
 if itemsets_df.empty:
-    st.warning(
-        "No se encontraron itemsets frecuentes con el soporte mínimo configurado. "
-        "Intentá reducir el soporte mínimo."
-    )
+    st.warning("No se encontraron itemsets frecuentes. Proba reducir el soporte minimo.")
 else:
     itemsets_display = (
         itemsets_df
@@ -270,15 +223,11 @@ else:
     itemsets_display["support"] = itemsets_display["support"].round(4)
     st.dataframe(itemsets_display, width="stretch", hide_index=True)
 
-# ── Resultados: Reglas de asociación ─────────────────────────────────────────
 st.markdown("---")
-st.subheader("Reglas de asociación")
+st.subheader("V2: reglas de asociacion")
 
 if rules_df.empty:
-    st.warning(
-        "No se generaron reglas con la confianza mínima configurada. "
-        "Intentá reducir la confianza mínima o el soporte."
-    )
+    st.warning("No se generaron reglas. Proba reducir confianza o soporte.")
 else:
     rules_display = (
         rules_df
@@ -294,17 +243,14 @@ else:
         rules_display[["support", "confidence", "lift"]].round(4)
     )
 
-    # ── KPIs ──────────────────────────────────────────────────────────────
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Reglas encontradas", f"{len(rules_display):,}")
+        st.metric("Reglas V2", f"{len(rules_display):,}")
     with col2:
-        high_lift = (rules_display["lift"] > 1.5).sum()
-        st.metric("Reglas con lift > 1.5", f"{high_lift:,}")
+        st.metric("Lift > 1.5", f"{int((rules_display['lift'] > 1.5).sum()):,}")
     with col3:
-        st.metric("Confianza máxima", f"{rules_display['confidence'].max():.3f}")
+        st.metric("Confianza maxima", f"{rules_display['confidence'].max():.3f}")
 
-    # Highlight high-lift rules
     def _highlight_lift(row: pd.Series) -> list[str]:
         return ["background-color: #fff3cd" if row["lift"] > 1.5 else "" for _ in row]
 
@@ -314,15 +260,12 @@ else:
         hide_index=True,
     )
     st.caption(
-        "Filas en amarillo: lift > 1.5. Un lift > 1 indica que antecedente "
-        "y consecuente aparecen juntos más de lo esperado por azar."
+        "Filas resaltadas: lift > 1.5. Un lift mayor a 1 indica que la relacion "
+        "aparece mas de lo esperado por azar."
     )
 
-# ── Scatter de soporte vs confianza ──────────────────────────────────────────
-if not rules_df.empty:
     st.markdown("---")
-    st.subheader("Dispersión: soporte vs. confianza (tamaño = lift)")
-
+    st.subheader("V2: soporte vs. confianza")
     rules_plot = rules_display.head(50)
     fig_scatter = px.scatter(
         rules_plot,
@@ -333,6 +276,6 @@ if not rules_df.empty:
         hover_data=["antecedent", "consequent"],
         color_continuous_scale="YlOrRd",
         labels={"support": "Soporte", "confidence": "Confianza", "lift": "Lift"},
-        title="Top 50 reglas: soporte vs. confianza",
+        title="V2: top 50 reglas USGS",
     )
     st.plotly_chart(fig_scatter, width="stretch")

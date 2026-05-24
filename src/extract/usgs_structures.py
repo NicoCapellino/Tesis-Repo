@@ -2,7 +2,7 @@
 Extraction of urban infrastructure data from the USGS National Map via OGC WFS 2.0.
 
 Downloads hospitals, police stations, and fire stations for New York City using
-authoritative federal data (NSDI/OGC-compliant), replacing crowd-sourced OSM.
+authoritative federal data (NSDI/OGC-compliant).
 
 Service: https://carto-wfs.nationalmap.gov/arcgis/services/structures/MapServer/WFSServer
 Standard: OGC WFS 2.0.0

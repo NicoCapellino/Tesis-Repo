@@ -61,7 +61,7 @@ RUN mkdir -p data/raw data/processed data/reference
 
 # Streamlit config: disable telemetry, set server defaults
 RUN mkdir -p /root/.streamlit && \
-    printf '[general]\nemail = ""\n\n[server]\nheadless = true\naddress = "0.0.0.0"\nport = 8501\nenableCORS = false\nenableXsrfProtection = false\n\n[browser]\ngatherUsageStats = false\n' \
+    printf '[server]\nheadless = true\naddress = "0.0.0.0"\nport = 8501\nenableCORS = false\nenableXsrfProtection = false\n\n[browser]\ngatherUsageStats = false\n' \
     > /root/.streamlit/config.toml
 
 # Default command: run the dashboard

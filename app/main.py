@@ -35,15 +35,15 @@ pages = {
     "Estadísticas Descriptivas": [
         st.Page("pages/overview.py",     title="Resumen General",  icon="📊"),
         st.Page("pages/temporal.py",     title="Temporal",         icon="🕐"),
-        st.Page("pages/geospatial.py",   title="Geoespacial",      icon="🗺️"),
+        st.Page("pages/geospatial.py",   title="Geoespacial V2",   icon="🗺️"),
         st.Page("pages/demographic.py",  title="Demográfico",      icon="👥"),
     ],
     "Análisis Avanzado": [
-        st.Page("pages/comparative.py",  title="Comparativo",          icon="⚖️"),
-        st.Page("pages/proximity.py",    title="Proximidad",           icon="📍"),
+        st.Page("pages/comparative.py",  title="Comparativo V2",       icon="⚖️"),
+        st.Page("pages/proximity.py",    title="Proximidad V2",        icon="📍"),
         st.Page("pages/clustering.py",   title="Clustering K-Means",   icon="🔵"),
-        st.Page("pages/associations.py", title="Reglas de Asociación", icon="🔗"),
-        st.Page("pages/prediction.py",   title="Predicción ML",        icon="🎯"),
+        st.Page("pages/associations.py", title="Reglas V2",            icon="🔗"),
+        st.Page("pages/prediction.py",   title="Predicción ML V2",     icon="🎯"),
         st.Page("pages/anomalies.py",    title="Anomalías",            icon="🔴"),
     ],
 }
@@ -95,43 +95,19 @@ def load_complaints() -> pl.DataFrame:
 
 
 @st.cache_data(ttl=3600)
-def load_police_stations() -> pl.DataFrame | None:
-    path = REFERENCE_DIR / DEFAULT_CITY / "police_stations.parquet"
-    return pl.read_parquet(path) if path.exists() else None
-
-
-@st.cache_data(ttl=3600)
-def load_transport_stations() -> pl.DataFrame | None:
-    path = REFERENCE_DIR / DEFAULT_CITY / "transport_stations.parquet"
-    return pl.read_parquet(path) if path.exists() else None
-
-
-@st.cache_data(ttl=3600)
-def load_healthcare() -> pl.DataFrame | None:
+def load_usgs_healthcare_v2() -> pl.DataFrame | None:
     path = REFERENCE_DIR / DEFAULT_CITY / "healthcare.parquet"
     return pl.read_parquet(path) if path.exists() else None
 
 
 @st.cache_data(ttl=3600)
-def load_schools() -> pl.DataFrame | None:
-    path = REFERENCE_DIR / DEFAULT_CITY / "schools.parquet"
-    return pl.read_parquet(path) if path.exists() else None
-
-
-@st.cache_data(ttl=3600)
-def load_offices() -> pl.DataFrame | None:
-    path = REFERENCE_DIR / DEFAULT_CITY / "offices.parquet"
-    return pl.read_parquet(path) if path.exists() else None
-
-
-@st.cache_data(ttl=3600)
-def load_usgs_police() -> pl.DataFrame | None:
+def load_usgs_police_v2() -> pl.DataFrame | None:
     path = REFERENCE_DIR / DEFAULT_CITY / "usgs_police.parquet"
     return pl.read_parquet(path) if path.exists() else None
 
 
 @st.cache_data(ttl=3600)
-def load_usgs_fire() -> pl.DataFrame | None:
+def load_usgs_fire_v2() -> pl.DataFrame | None:
     path = REFERENCE_DIR / DEFAULT_CITY / "usgs_fire.parquet"
     return pl.read_parquet(path) if path.exists() else None
 
@@ -142,13 +118,9 @@ def load_usgs_fire() -> pl.DataFrame | None:
 if "complaints" not in st.session_state:
     with st.spinner("Cargando datos..."):
         st.session_state["complaints"]              = load_complaints()
-        st.session_state["police_stations"]         = load_police_stations()
-        st.session_state["transport_stations"]      = load_transport_stations()
-        st.session_state["healthcare"]              = load_healthcare()
-        st.session_state["schools"]                 = load_schools()
-        st.session_state["offices"]                 = load_offices()
-        st.session_state["usgs_police"]             = load_usgs_police()
-        st.session_state["usgs_fire"]               = load_usgs_fire()
+        st.session_state["usgs_healthcare_v2"]      = load_usgs_healthcare_v2()
+        st.session_state["usgs_police_v2"]          = load_usgs_police_v2()
+        st.session_state["usgs_fire_v2"]            = load_usgs_fire_v2()
 
 df_all = st.session_state["complaints"]
 
