@@ -93,9 +93,9 @@ with col2:
     vic_sex = (
         df.filter(pl.col("victim_sex").is_not_null())
         .with_columns(
-            pl.col("victim_sex").replace_strict(
-                _SEX_LABELS, default="Other"
-            ).alias("victim_sex_label")
+            pl.col("victim_sex")
+            .replace_strict(_SEX_LABELS, default="Other")
+            .alias("victim_sex_label")
         )
         .group_by("victim_sex_label")
         .len()

@@ -36,10 +36,27 @@ log = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 WFS_URL = "https://carto-wfs.nationalmap.gov/arcgis/services/structures/MapServer/WFSServer"
-WFS_NS  = "http://www.opengis.net/wfs/2.0"
-GML_NS  = "http://www.opengis.net/gml/3.2"
+WFS_NS = "http://www.opengis.net/wfs/2.0"
+GML_NS = "http://www.opengis.net/gml/3.2"
 
 ATTR_FIELDS = ["NAME", "FType", "FCode", "ADDRESS", "CITY", "STATE", "ZIPCODE", "LOADDATE"]
+OUTPUT_COLUMNS = [
+    "name",
+    "lat",
+    "lon",
+    "facility_type",
+    "address",
+    "zipcode",
+    "borough",
+    "fcode",
+    "loaddate",
+]
+RENAME_COLUMNS = {
+    "NAME": "name",
+    "ADDRESS": "address",
+    "ZIPCODE": "zipcode",
+    "LOADDATE": "loaddate",
+}
 
 # ZIP prefix → NYC borough mapping (more reliable than CITY name)
 NYC_ZIP_PREFIXES: dict[str, str] = {
@@ -66,9 +83,10 @@ HEALTHCARE_FCODE_MAP: dict[str, str] = {
     "80099": "Medical Facility",
 }
 
-# Verified FCodes from live WFS (May 2026) — prior values 74010/74011/74099 don't exist in the service
+# Verified FCodes from live WFS (May 2026).
+# Prior values 74010/74011/74099 do not exist in the service.
 POLICE_FCODES: frozenset[str] = frozenset({"74034"})
-FIRE_FCODES:   frozenset[str] = frozenset({"74026"})
+FIRE_FCODES: frozenset[str] = frozenset({"74026"})
 
 
 def _is_retryable_usgs_error(exc: BaseException) -> bool:
@@ -83,6 +101,7 @@ def _is_retryable_usgs_error(exc: BaseException) -> bool:
 # ---------------------------------------------------------------------------
 # Extractor class
 # ---------------------------------------------------------------------------
+
 
 class USGSStructuresExtractor:
     """Downloads infrastructure data from the USGS National Map WFS service.
@@ -112,17 +131,18 @@ class USGSStructuresExtractor:
         log.info("usgs_fetch_start", ftype=800, city=city)
         raw = self._fetch_ny(ftype=800)
         nyc = self._filter_nyc(raw)
-        df = nyc.rename({
-            "NAME": "name",
-            "ADDRESS": "address",
-            "ZIPCODE": "zipcode",
-            "LOADDATE": "loaddate",
-        }).with_columns([
-            pl.col("FCode")
-              .replace(HEALTHCARE_FCODE_MAP, default="Medical Facility")
-              .alias("facility_type"),
-            pl.col("FCode").alias("fcode"),
-        ]).select(["name", "lat", "lon", "facility_type", "address", "zipcode", "borough", "fcode", "loaddate"])
+        df = (
+            nyc.rename(RENAME_COLUMNS)
+            .with_columns(
+                [
+                    pl.col("FCode")
+                    .replace(HEALTHCARE_FCODE_MAP, default="Medical Facility")
+                    .alias("facility_type"),
+                    pl.col("FCode").alias("fcode"),
+                ]
+            )
+            .select(OUTPUT_COLUMNS)
+        )
         log.info("usgs_fetch_done", ftype=800, records=len(df))
         return df
 
@@ -137,15 +157,16 @@ class USGSStructuresExtractor:
         raw = self._fetch_ny(ftype=740)
         nyc = self._filter_nyc(raw)
         police = nyc.filter(pl.col("FCode").is_in(list(POLICE_FCODES)))
-        df = police.rename({
-            "NAME": "name",
-            "ADDRESS": "address",
-            "ZIPCODE": "zipcode",
-            "LOADDATE": "loaddate",
-        }).with_columns([
-            pl.lit("Police Station").alias("facility_type"),
-            pl.col("FCode").alias("fcode"),
-        ]).select(["name", "lat", "lon", "facility_type", "address", "zipcode", "borough", "fcode", "loaddate"])
+        df = (
+            police.rename(RENAME_COLUMNS)
+            .with_columns(
+                [
+                    pl.lit("Police Station").alias("facility_type"),
+                    pl.col("FCode").alias("fcode"),
+                ]
+            )
+            .select(OUTPUT_COLUMNS)
+        )
         log.info("usgs_fetch_done", ftype=740, records=len(df))
         return df
 
@@ -160,15 +181,16 @@ class USGSStructuresExtractor:
         raw = self._fetch_ny(ftype=740)
         nyc = self._filter_nyc(raw)
         fire = nyc.filter(pl.col("FCode").is_in(list(FIRE_FCODES)))
-        df = fire.rename({
-            "NAME": "name",
-            "ADDRESS": "address",
-            "ZIPCODE": "zipcode",
-            "LOADDATE": "loaddate",
-        }).with_columns([
-            pl.lit("Fire Station").alias("facility_type"),
-            pl.col("FCode").alias("fcode"),
-        ]).select(["name", "lat", "lon", "facility_type", "address", "zipcode", "borough", "fcode", "loaddate"])
+        df = (
+            fire.rename(RENAME_COLUMNS)
+            .with_columns(
+                [
+                    pl.lit("Fire Station").alias("facility_type"),
+                    pl.col("FCode").alias("fcode"),
+                ]
+            )
+            .select(OUTPUT_COLUMNS)
+        )
         log.info("usgs_fetch_done", ftype=740, subtype="fire", records=len(df))
         return df
 
@@ -206,21 +228,29 @@ class USGSStructuresExtractor:
 
         def _normalise(df: pl.DataFrame, facility_type: str) -> pl.DataFrame:
             return (
-                df.rename({"NAME": "name", "ADDRESS": "address", "ZIPCODE": "zipcode", "LOADDATE": "loaddate"})
-                  .with_columns([
-                      pl.lit(facility_type).alias("facility_type"),
-                      pl.col("FCode").alias("fcode"),
-                  ])
-                  .select(["name", "lat", "lon", "facility_type", "address", "zipcode", "borough", "fcode", "loaddate"])
+                df.rename(RENAME_COLUMNS)
+                .with_columns(
+                    [
+                        pl.lit(facility_type).alias("facility_type"),
+                        pl.col("FCode").alias("fcode"),
+                    ]
+                )
+                .select(OUTPUT_COLUMNS)
             )
 
-        police_df = _normalise(nyc740.filter(pl.col("FCode").is_in(list(POLICE_FCODES))), "Police Station")
+        police_df = _normalise(
+            nyc740.filter(pl.col("FCode").is_in(list(POLICE_FCODES))),
+            "Police Station",
+        )
         police_path = output_dir / "usgs_police.parquet"
         police_df.write_parquet(police_path, compression="zstd")
         log.info("saved_usgs_police", records=len(police_df), path=str(police_path))
         saved["usgs_police"] = police_path
 
-        fire_df = _normalise(nyc740.filter(pl.col("FCode").is_in(list(FIRE_FCODES))), "Fire Station")
+        fire_df = _normalise(
+            nyc740.filter(pl.col("FCode").is_in(list(FIRE_FCODES))),
+            "Fire Station",
+        )
         fire_path = output_dir / "usgs_fire.parquet"
         fire_df.write_parquet(fire_path, compression="zstd")
         log.info("saved_usgs_fire", records=len(fire_df), path=str(fire_path))
@@ -246,10 +276,10 @@ class USGSStructuresExtractor:
             returned=root.get("numberReturned"),
         )
 
-        rows: list[dict] = []
+        rows: list[dict[str, object]] = []
         for member in root.iter(f"{{{WFS_NS}}}member"):
             for feat in member:
-                row: dict = {f: None for f in ATTR_FIELDS}
+                row: dict[str, object] = {f: None for f in ATTR_FIELDS}
                 row["lat"] = None
                 row["lon"] = None
 
@@ -319,8 +349,7 @@ class USGSStructuresExtractor:
     def _filter_nyc(df: pl.DataFrame) -> pl.DataFrame:
         """Filter to NYC records using ZIP prefix and add borough column."""
         return (
-            df
-            .with_columns(pl.col("ZIPCODE").str.slice(0, 3).alias("zip_prefix"))
+            df.with_columns(pl.col("ZIPCODE").str.slice(0, 3).alias("zip_prefix"))
             .filter(pl.col("zip_prefix").is_in(list(NYC_ZIP_PREFIXES.keys())))
             .with_columns(pl.col("zip_prefix").replace(NYC_ZIP_PREFIXES).alias("borough"))
             .drop("zip_prefix")

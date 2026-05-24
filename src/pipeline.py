@@ -131,9 +131,9 @@ def main() -> None:
     log.info("nyc_crime_pipeline_v2_usgs")
 
     # Parse simple CLI flags
-    skip_extract     = "--skip-extract" in sys.argv
-    skip_complaints  = "--skip-complaints" in sys.argv
-    skip_usgs        = "--skip-usgs" in sys.argv
+    skip_extract = "--skip-extract" in sys.argv
+    skip_complaints = "--skip-complaints" in sys.argv
+    skip_usgs = "--skip-usgs" in sys.argv
 
     try:
         run_pipeline(

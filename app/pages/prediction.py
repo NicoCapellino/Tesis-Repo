@@ -64,7 +64,11 @@ with st.expander("Parametros del modelo V2", expanded=True):
             format="%.2f",
         )
     with col4:
-        model_choice = st.selectbox("Modelo principal", ["Random Forest", "Gradient Boosting"], index=0)
+        model_choice = st.selectbox(
+            "Modelo principal",
+            ["Random Forest", "Gradient Boosting"],
+            index=0,
+        )
 
 SAMPLE_N = 30_000
 
@@ -140,7 +144,9 @@ def _cyclical_encode(values: np.ndarray, period: float) -> tuple[np.ndarray, np.
     return np.sin(angle), np.cos(angle)
 
 
-def _build_feature_matrix(data: pd.DataFrame) -> tuple[pd.DataFrame, np.ndarray, list[str], LabelEncoder]:
+def _build_feature_matrix(
+    data: pd.DataFrame,
+) -> tuple[pd.DataFrame, np.ndarray, list[str], LabelEncoder]:
     df_work = data.copy()
 
     hour_sin, hour_cos = _cyclical_encode(df_work["hour"].values, 24.0)
@@ -157,7 +163,9 @@ def _build_feature_matrix(data: pd.DataFrame) -> tuple[pd.DataFrame, np.ndarray,
     df_work["is_weekend"] = df_work["day_of_week"].isin([6, 7]).astype(float)
     df_work["night_weekend"] = df_work["is_night"] * df_work["is_weekend"]
 
-    dist_km_cols = [col for col in df_work.columns if col.startswith("dist_usgs_v2") and col.endswith("_km")]
+    dist_km_cols = [
+        col for col in df_work.columns if col.startswith("dist_usgs_v2") and col.endswith("_km")
+    ]
     for col in dist_km_cols:
         df_work[f"log_{col}"] = np.log1p(df_work[col])
 
@@ -194,21 +202,23 @@ def _build_feature_matrix(data: pd.DataFrame) -> tuple[pd.DataFrame, np.ndarray,
     ]
     numeric_features.extend(dist_km_cols)
     numeric_features.extend([f"log_{col}" for col in dist_km_cols])
-    numeric_features.extend([col for col in df_work.columns if col.startswith("ratio_dist_usgs_v2")])
+    numeric_features.extend(
+        [col for col in df_work.columns if col.startswith("ratio_dist_usgs_v2")]
+    )
 
-    X_parts = [df_work[numeric_features], borough_dummies]
+    x_parts = [df_work[numeric_features], borough_dummies]
     if not premise_dummies.empty:
-        X_parts.append(premise_dummies)
-    X = pd.concat(X_parts, axis=1).astype(float)
+        x_parts.append(premise_dummies)
+    x_matrix = pd.concat(x_parts, axis=1).astype(float)
 
     le = LabelEncoder()
     y = le.fit_transform(df_work["offense_level"])
 
-    return X, y, X.columns.tolist(), le
+    return x_matrix, y, x_matrix.columns.tolist(), le
 
 
 def _train_single_model(
-    X_scaled: np.ndarray,
+    x_scaled: np.ndarray,
     y: np.ndarray,
     feature_names: list[str],
     class_names: list[str],
@@ -236,17 +246,17 @@ def _train_single_model(
             class_weight="balanced",
         )
 
-    cv_scores = cross_val_score(model, X_scaled, y, cv=skf, scoring="accuracy", n_jobs=-1)
+    cv_scores = cross_val_score(model, x_scaled, y, cv=skf, scoring="accuracy", n_jobs=-1)
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X_scaled,
+    x_train, x_test, y_train, y_test = train_test_split(
+        x_scaled,
         y,
         test_size=t_size,
         random_state=42,
         stratify=y,
     )
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
+    model.fit(x_train, y_train)
+    y_pred = model.predict(x_test)
 
     return {
         "cm": confusion_matrix(y_test, y_pred),
@@ -271,16 +281,16 @@ def _train_models_bg(
     primary_is_gb: bool,
 ) -> tuple[dict, dict]:
     task.update(0.05, "Paso 1/4: Construyendo features USGS V2...")
-    X, y, feature_names, le = _build_feature_matrix(features_data)
+    x_matrix, y, feature_names, le = _build_feature_matrix(features_data)
     class_names = le.classes_.tolist()
 
     task.update(0.15, "Paso 2/4: Escalando features...")
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    x_scaled = scaler.fit_transform(x_matrix)
 
     task.update(0.25, "Paso 3/4: Entrenando modelo principal...")
     primary = _train_single_model(
-        X_scaled,
+        x_scaled,
         y,
         feature_names,
         class_names,
@@ -292,7 +302,7 @@ def _train_models_bg(
 
     task.update(0.65, "Paso 4/4: Entrenando modelo secundario...")
     secondary = _train_single_model(
-        X_scaled,
+        x_scaled,
         y,
         feature_names,
         class_names,
@@ -306,15 +316,19 @@ def _train_models_bg(
 
 
 task = get_task("prediction_v2")
-params_hash = str(hash((
-    n_estimators,
-    max_depth,
-    test_size,
-    model_choice,
-    len(features_pdf),
-    tuple((label, len(layer_df)) for label, layer_df in usgs_layers.items()),
-    tuple(sorted(df["year"].drop_nulls().unique().to_list())),
-)))
+params_hash = str(
+    hash(
+        (
+            n_estimators,
+            max_depth,
+            test_size,
+            model_choice,
+            len(features_pdf),
+            tuple((label, len(layer_df)) for label, layer_df in usgs_layers.items()),
+            tuple(sorted(df["year"].drop_nulls().unique().to_list())),
+        )
+    )
+)
 
 if needs_recompute(task, params_hash):
     task.start(
@@ -345,11 +359,13 @@ with c4:
 st.markdown("---")
 st.subheader("V2: validacion cruzada estratificada")
 
-cv_data = pd.DataFrame({
-    "Fold": [f"Fold {i + 1}" for i in range(5)] + [f"Fold {i + 1}" for i in range(5)],
-    "Accuracy": list(primary["cv_scores"]) + list(secondary["cv_scores"]),
-    "Modelo": [primary["model_name"]] * 5 + [secondary["model_name"]] * 5,
-})
+cv_data = pd.DataFrame(
+    {
+        "Fold": [f"Fold {i + 1}" for i in range(5)] + [f"Fold {i + 1}" for i in range(5)],
+        "Accuracy": list(primary["cv_scores"]) + list(secondary["cv_scores"]),
+        "Modelo": [primary["model_name"]] * 5 + [secondary["model_name"]] * 5,
+    }
+)
 
 fig_cv = px.bar(
     cv_data,
@@ -364,12 +380,14 @@ fig_cv.update_traces(texttemplate="%{text:.3f}", textposition="outside")
 fig_cv.update_layout(yaxis=dict(range=[0, 1]))
 plotly_chart(fig_cv)
 
-cv_summary = pd.DataFrame({
-    "Modelo": [primary["model_name"], secondary["model_name"]],
-    "CV Media": [primary["cv_mean"], secondary["cv_mean"]],
-    "CV Std": [primary["cv_std"], secondary["cv_std"]],
-    "Holdout Accuracy": [primary["accuracy"], secondary["accuracy"]],
-}).round(4)
+cv_summary = pd.DataFrame(
+    {
+        "Modelo": [primary["model_name"], secondary["model_name"]],
+        "CV Media": [primary["cv_mean"], secondary["cv_mean"]],
+        "CV Std": [primary["cv_std"], secondary["cv_std"]],
+        "Holdout Accuracy": [primary["accuracy"], secondary["accuracy"]],
+    }
+).round(4)
 dataframe(cv_summary, hide_index=True)
 
 st.markdown("---")
@@ -397,10 +415,16 @@ st.caption(
     "la cercania a instalaciones USGS al modelo."
 )
 
-feat_imp_df = pd.DataFrame({
-    "feature": primary["feature_names"],
-    "importance": primary["importances"],
-}).sort_values("importance", ascending=True).tail(15)
+feat_imp_df = (
+    pd.DataFrame(
+        {
+            "feature": primary["feature_names"],
+            "importance": primary["importances"],
+        }
+    )
+    .sort_values("importance", ascending=True)
+    .tail(15)
+)
 
 fig_imp = px.bar(
     feat_imp_df,
@@ -420,20 +444,30 @@ st.subheader("V2: features USGS aplicadas")
 distance_feature_rows = []
 for label in usgs_layers:
     slug = _slug(label)
-    distance_feature_rows.append({
-        "feature": f"dist_{slug}_km",
-        "descripcion": f"Distancia al punto mas cercano de {label}",
-    })
-    distance_feature_rows.append({
-        "feature": f"log_dist_{slug}_km",
-        "descripcion": f"Log de distancia a {label}",
-    })
+    distance_feature_rows.append(
+        {
+            "feature": f"dist_{slug}_km",
+            "descripcion": f"Distancia al punto mas cercano de {label}",
+        }
+    )
+    distance_feature_rows.append(
+        {
+            "feature": f"log_dist_{slug}_km",
+            "descripcion": f"Log de distancia a {label}",
+        }
+    )
 dataframe(pd.DataFrame(distance_feature_rows), hide_index=True)
 
-feat_ranks = pd.DataFrame({
-    "feature": primary["feature_names"],
-    "importance": primary["importances"],
-}).sort_values("importance", ascending=False).reset_index(drop=True)
+feat_ranks = (
+    pd.DataFrame(
+        {
+            "feature": primary["feature_names"],
+            "importance": primary["importances"],
+        }
+    )
+    .sort_values("importance", ascending=False)
+    .reset_index(drop=True)
+)
 feat_ranks["rank"] = feat_ranks.index + 1
 
 insights = []
@@ -448,7 +482,9 @@ if insights:
     st.markdown("\n".join(insights))
 
 best_cv = max(primary["cv_mean"], secondary["cv_mean"])
-best_model = primary["model_name"] if primary["cv_mean"] >= secondary["cv_mean"] else secondary["model_name"]
+best_model = (
+    primary["model_name"] if primary["cv_mean"] >= secondary["cv_mean"] else secondary["model_name"]
+)
 
 st.markdown(
     f"**Resumen V2:** el mejor modelo es **{best_model}** con accuracy CV = "

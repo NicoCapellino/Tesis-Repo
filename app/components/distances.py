@@ -65,8 +65,10 @@ def compute_nearest_distances(
 
     # Shape: (n_crimes, n_stations) via broadcasting
     dist_matrix = haversine_np(
-        c_lats[:, None], c_lons[:, None],
-        s_lats[None, :], s_lons[None, :],
+        c_lats[:, None],
+        c_lons[:, None],
+        s_lats[None, :],
+        s_lons[None, :],
     )
     return np.min(dist_matrix, axis=1)
 

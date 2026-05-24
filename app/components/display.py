@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable
-from functools import lru_cache
+from functools import cache
 from typing import Any
 
 import streamlit as st
 
 
-@lru_cache(maxsize=None)
+@cache
 def _supports_width_stretch(func: Callable[..., Any]) -> bool:
     """Return whether a Streamlit function accepts string width values."""
     try:

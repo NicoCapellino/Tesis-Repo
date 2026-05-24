@@ -41,12 +41,8 @@ class TestNYPDComplaintsExtractor:
     def test_pagination_stops_on_partial_page(self, extractor: NYPDComplaintsExtractor) -> None:
         """Extractor should stop when a page returns fewer rows than $limit."""
         # Simulate: first page returns 100 rows (full), second returns 50 (partial = last)
-        page1_csv = "cmplnt_num,boro_nm\n" + "\n".join(
-            f"{i},MANHATTAN" for i in range(100)
-        )
-        page2_csv = "cmplnt_num,boro_nm\n" + "\n".join(
-            f"{i + 100},BROOKLYN" for i in range(50)
-        )
+        page1_csv = "cmplnt_num,boro_nm\n" + "\n".join(f"{i},MANHATTAN" for i in range(100))
+        page2_csv = "cmplnt_num,boro_nm\n" + "\n".join(f"{i + 100},BROOKLYN" for i in range(50))
 
         mock_responses = [
             MagicMock(status_code=200, text=page1_csv),
@@ -107,18 +103,20 @@ class TestUSGSStructuresExtractor:
 
     def test_filter_nyc_includes_queens_111_zip_prefix(self) -> None:
         """ZIP prefix 111 should be retained and mapped to Queens."""
-        df = pl.DataFrame({
-            "NAME": ["LIC Station", "Manhattan Facility", "Long Island Facility"],
-            "FType": ["740", "800", "800"],
-            "FCode": ["74034", "80010", "80010"],
-            "ADDRESS": ["1 Court Sq", "1 Main St", "1 Other St"],
-            "CITY": ["Long Island City", "New York", "Mineola"],
-            "STATE": ["NY", "NY", "NY"],
-            "ZIPCODE": ["11101", "10001", "11501"],
-            "LOADDATE": ["2026-01-01", "2026-01-01", "2026-01-01"],
-            "lat": [40.746, 40.75, 40.74],
-            "lon": [-73.944, -73.99, -73.64],
-        })
+        df = pl.DataFrame(
+            {
+                "NAME": ["LIC Station", "Manhattan Facility", "Long Island Facility"],
+                "FType": ["740", "800", "800"],
+                "FCode": ["74034", "80010", "80010"],
+                "ADDRESS": ["1 Court Sq", "1 Main St", "1 Other St"],
+                "CITY": ["Long Island City", "New York", "Mineola"],
+                "STATE": ["NY", "NY", "NY"],
+                "ZIPCODE": ["11101", "10001", "11501"],
+                "LOADDATE": ["2026-01-01", "2026-01-01", "2026-01-01"],
+                "lat": [40.746, 40.75, 40.74],
+                "lon": [-73.944, -73.99, -73.64],
+            }
+        )
 
         result = USGSStructuresExtractor._filter_nyc(df)
 
@@ -172,18 +170,20 @@ class TestUSGSStructuresExtractor:
 
     def test_extract_law_enforcement_filters_to_police_fcode(self) -> None:
         """Law enforcement extraction should keep only police station FCodes."""
-        raw = pl.DataFrame({
-            "NAME": ["Police", "Fire"],
-            "FType": ["740", "740"],
-            "FCode": ["74034", "74026"],
-            "ADDRESS": ["1 Main", "2 Main"],
-            "CITY": ["New York", "New York"],
-            "STATE": ["NY", "NY"],
-            "ZIPCODE": ["10001", "10002"],
-            "LOADDATE": ["2026-01-01", "2026-01-01"],
-            "lat": [40.75, 40.76],
-            "lon": [-73.99, -73.98],
-        })
+        raw = pl.DataFrame(
+            {
+                "NAME": ["Police", "Fire"],
+                "FType": ["740", "740"],
+                "FCode": ["74034", "74026"],
+                "ADDRESS": ["1 Main", "2 Main"],
+                "CITY": ["New York", "New York"],
+                "STATE": ["NY", "NY"],
+                "ZIPCODE": ["10001", "10002"],
+                "LOADDATE": ["2026-01-01", "2026-01-01"],
+                "lat": [40.75, 40.76],
+                "lon": [-73.99, -73.98],
+            }
+        )
         extractor = USGSStructuresExtractor()
 
         with patch.object(extractor, "_fetch_ny", return_value=raw):

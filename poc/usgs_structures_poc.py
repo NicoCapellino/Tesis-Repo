@@ -25,8 +25,8 @@ import polars as pl
 # ---------------------------------------------------------------------------
 
 WFS_URL = "https://carto-wfs.nationalmap.gov/arcgis/services/structures/MapServer/WFSServer"
-WFS_NS  = "http://www.opengis.net/wfs/2.0"
-FIELDS  = ["NAME", "FType", "FCode", "ADDRESS", "CITY", "STATE", "ZIPCODE", "LOADDATE"]
+WFS_NS = "http://www.opengis.net/wfs/2.0"
+FIELDS = ["NAME", "FType", "FCode", "ADDRESS", "CITY", "STATE", "ZIPCODE", "LOADDATE"]
 
 # NYC borough ZIP code prefixes — more reliable than CITY name matching.
 # BBOX spatial filter returns 0 (geometries not spatially indexed on this service).
@@ -45,6 +45,7 @@ NYC_ZIP_PREFIXES = {
 # ---------------------------------------------------------------------------
 # WFS fetch
 # ---------------------------------------------------------------------------
+
 
 def build_xml_filter(ftype: int, state: str = "NY") -> str:
     """OGC FES 2.0 XML filter body — POST required, GET params ignored by this service."""
@@ -98,30 +99,31 @@ def fetch_ny(ftype: int) -> pl.DataFrame:
 def filter_nyc(df: pl.DataFrame) -> pl.DataFrame:
     """Filter to NYC using ZIP code prefixes and add borough column."""
     return (
-        df
-        .with_columns(pl.col("ZIPCODE").str.slice(0, 3).alias("zip_prefix"))
+        df.with_columns(pl.col("ZIPCODE").str.slice(0, 3).alias("zip_prefix"))
         .filter(pl.col("zip_prefix").is_in(list(NYC_ZIP_PREFIXES.keys())))
         .with_columns(pl.col("zip_prefix").replace(NYC_ZIP_PREFIXES).alias("borough"))
         .drop("zip_prefix")
     )
 
+
 # ---------------------------------------------------------------------------
 # Analysis helpers
 # ---------------------------------------------------------------------------
 
+
 def section(title: str) -> None:
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  {title}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
 
 def completeness(df: pl.DataFrame, label: str) -> None:
     total = len(df)
     rows = []
     for col in ["NAME", "ADDRESS", "CITY", "ZIPCODE", "LOADDATE"]:
-        filled  = df[col].drop_nulls().len()
+        filled = df[col].drop_nulls().len()
         missing = total - filled
-        pct     = round(filled / total * 100, 1) if total else 0
+        pct = round(filled / total * 100, 1) if total else 0
         rows.append({"field": col, "filled": filled, "missing": missing, "complete_%": pct})
     print(f"\n--- Completeness: {label} (n={total}) ---")
     print(pl.DataFrame(rows))
@@ -138,46 +140,51 @@ def missing_address(df: pl.DataFrame, label: str) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     # --- Fetch ---
     section("1. Fetching from USGS WFS")
-    hospitals_ny   = fetch_ny(800)
+    hospitals_ny = fetch_ny(800)
     law_enforce_ny = fetch_ny(740)
 
-    hospitals_nyc   = filter_nyc(hospitals_ny)
+    hospitals_nyc = filter_nyc(hospitals_ny)
     law_enforce_nyc = filter_nyc(law_enforce_ny)
 
     # --- Counts ---
     section("2. NYC Record Counts")
     print(f"  Hospitals:        {len(hospitals_nyc):>4}  (of {len(hospitals_ny)} NY state total)")
-    print(f"  Law Enforcement:  {len(law_enforce_nyc):>4}  (of {len(law_enforce_ny)} NY state total)")
+    print(
+        f"  Law Enforcement:  {len(law_enforce_nyc):>4}  (of {len(law_enforce_ny)} NY state total)"
+    )
 
     # --- Borough distribution ---
     section("3. Distribution by Borough")
     for label, df in [("Hospitals", hospitals_nyc), ("Law Enforcement", law_enforce_nyc)]:
         print(f"\n--- {label} ---")
-        print(
-            df.group_by("borough")
-              .agg(pl.len().alias("count"))
-              .sort("count", descending=True)
-        )
+        print(df.group_by("borough").agg(pl.len().alias("count")).sort("count", descending=True))
 
     # --- Completeness ---
     section("4. Completeness Check")
-    completeness(hospitals_nyc,   "Hospitals NYC")
+    completeness(hospitals_nyc, "Hospitals NYC")
     completeness(law_enforce_nyc, "Law Enforcement NYC")
 
     # --- Missing addresses ---
     section("5. Records Missing ADDRESS")
-    missing_address(hospitals_nyc,   "Hospitals")
+    missing_address(hospitals_nyc, "Hospitals")
     missing_address(law_enforce_nyc, "Law Enforcement")
 
     # --- Full preview ---
     section("6. Full NYC Record List")
     print("\n=== Hospitals ===")
-    print(hospitals_nyc.select(["NAME", "borough", "ADDRESS", "ZIPCODE", "LOADDATE"]).sort("borough"))
+    print(
+        hospitals_nyc.select(["NAME", "borough", "ADDRESS", "ZIPCODE", "LOADDATE"]).sort("borough")
+    )
     print("\n=== Law Enforcement ===")
-    print(law_enforce_nyc.select(["NAME", "borough", "ADDRESS", "ZIPCODE", "LOADDATE"]).sort("borough"))
+    print(
+        law_enforce_nyc.select(["NAME", "borough", "ADDRESS", "ZIPCODE", "LOADDATE"]).sort(
+            "borough"
+        )
+    )
 
     # --- Export ---
     section("7. Export")

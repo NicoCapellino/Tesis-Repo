@@ -25,9 +25,7 @@ df = get_filtered_data()
 usgs_layers = get_usgs_v2_layers()
 
 if not usgs_layers:
-    st.warning(
-        "No hay datos USGS V2 disponibles. Ejecuta el pipeline de referencia USGS primero."
-    )
+    st.warning("No hay datos USGS V2 disponibles. Ejecuta el pipeline de referencia USGS primero.")
     st.stop()
 
 
@@ -108,13 +106,15 @@ if sample_df.is_empty():
 
 cerca_label = f"CERCA (< {threshold_km} km) - {selected_layer}"
 lejos_label = f"LEJOS (>= {threshold_km} km) - {selected_layer}"
-sample_df = sample_df.with_columns([
-    (pl.col("dist_ref_m") / 1000).alias("dist_ref_km"),
-    pl.when(pl.col("dist_ref_m") < threshold_m)
-    .then(pl.lit(cerca_label))
-    .otherwise(pl.lit(lejos_label))
-    .alias("grupo_v2"),
-])
+sample_df = sample_df.with_columns(
+    [
+        (pl.col("dist_ref_m") / 1000).alias("dist_ref_km"),
+        pl.when(pl.col("dist_ref_m") < threshold_m)
+        .then(pl.lit(cerca_label))
+        .otherwise(pl.lit(lejos_label))
+        .alias("grupo_v2"),
+    ]
+)
 
 cerca_count = int((sample_df["dist_ref_m"] < threshold_m).sum())
 lejos_count = len(sample_df) - cerca_count
@@ -155,14 +155,16 @@ if not hour_df.is_empty():
 
     hour_stats = (
         hour_df.group_by("grupo_v2")
-        .agg([
-            pl.len().alias("n"),
-            pl.col("hour").mean().round(2).alias("media"),
-            pl.col("hour").median().alias("mediana"),
-            pl.col("hour").std().round(2).alias("std"),
-            pl.col("hour").quantile(0.25).alias("q1"),
-            pl.col("hour").quantile(0.75).alias("q3"),
-        ])
+        .agg(
+            [
+                pl.len().alias("n"),
+                pl.col("hour").mean().round(2).alias("media"),
+                pl.col("hour").median().alias("mediana"),
+                pl.col("hour").std().round(2).alias("std"),
+                pl.col("hour").quantile(0.25).alias("q1"),
+                pl.col("hour").quantile(0.75).alias("q3"),
+            ]
+        )
         .with_columns((pl.col("q3") - pl.col("q1")).round(2).alias("iqr"))
     )
     dataframe(hour_stats.to_pandas(), hide_index=True)
@@ -227,13 +229,16 @@ for label, distances in distance_map.items():
 summary_rows: list[dict] = []
 for label, col_name in distance_cols.items():
     distances_km = multi_df[col_name] / 1000
-    summary_rows.append({
-        "capa_v2": label,
-        "media_km": round(float(distances_km.mean()), 3),
-        "mediana_km": round(float(distances_km.median()), 3),
-        "p75_km": round(float(distances_km.quantile(0.75)), 3),
-        f"%_cerca_{threshold_km}km": round(float((multi_df[col_name] < threshold_m).sum()) / len(multi_df) * 100, 1),
-    })
+    pct_near = float((multi_df[col_name] < threshold_m).sum()) / len(multi_df) * 100
+    summary_rows.append(
+        {
+            "capa_v2": label,
+            "media_km": round(float(distances_km.mean()), 3),
+            "mediana_km": round(float(distances_km.median()), 3),
+            "p75_km": round(float(distances_km.quantile(0.75)), 3),
+            f"%_cerca_{threshold_km}km": round(pct_near, 1),
+        }
+    )
 
 summary_v2 = pd.DataFrame(summary_rows)
 dataframe(summary_v2, hide_index=True)
@@ -265,12 +270,16 @@ for label, col_name in distance_cols.items():
     slug = _slug(label)
     near_col = f"cerca_{slug}"
     total_col = f"_total_{slug}"
-    agg_exprs.extend([
-        (pl.col(col_name) / 1000).mean().round(3).alias(f"media_{slug}_km"),
-        (pl.col(col_name) < threshold_m).sum().alias(near_col),
-        pl.len().alias(total_col),
-    ])
-    pct_exprs.append((pl.col(near_col) / pl.col(total_col) * 100).round(1).alias(f"pct_cerca_{slug}"))
+    agg_exprs.extend(
+        [
+            (pl.col(col_name) / 1000).mean().round(3).alias(f"media_{slug}_km"),
+            (pl.col(col_name) < threshold_m).sum().alias(near_col),
+            pl.len().alias(total_col),
+        ]
+    )
+    pct_exprs.append(
+        (pl.col(near_col) / pl.col(total_col) * 100).round(1).alias(f"pct_cerca_{slug}")
+    )
     drop_cols.extend([near_col, total_col])
 
 crime_type_stats = (
@@ -298,9 +307,12 @@ BIN_LABELS = ["Muy cerca (<250m)", "Cerca (250-500m)", "Media (500m-1km)", "Lejo
 
 def _bin_distance(col: str, alias: str) -> pl.Expr:
     return (
-        pl.when(pl.col(col) < 250).then(pl.lit(BIN_LABELS[0]))
-        .when(pl.col(col) < 500).then(pl.lit(BIN_LABELS[1]))
-        .when(pl.col(col) < 1000).then(pl.lit(BIN_LABELS[2]))
+        pl.when(pl.col(col) < 250)
+        .then(pl.lit(BIN_LABELS[0]))
+        .when(pl.col(col) < 500)
+        .then(pl.lit(BIN_LABELS[1]))
+        .when(pl.col(col) < 1000)
+        .then(pl.lit(BIN_LABELS[2]))
         .otherwise(pl.lit(BIN_LABELS[3]))
         .alias(alias)
     )
@@ -311,10 +323,12 @@ if other_options:
     selected_col = distance_cols[selected_layer]
     compare_col = distance_cols[compare_layer]
     cross_df = (
-        multi_df.with_columns([
-            _bin_distance(selected_col, "bin_referencia"),
-            _bin_distance(compare_col, "bin_comparada"),
-        ])
+        multi_df.with_columns(
+            [
+                _bin_distance(selected_col, "bin_referencia"),
+                _bin_distance(compare_col, "bin_comparada"),
+            ]
+        )
         .group_by("bin_referencia", "bin_comparada")
         .len()
         .rename({"len": "crimenes"})

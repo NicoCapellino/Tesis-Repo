@@ -180,16 +180,20 @@ layers_payload = [
 ]
 
 task = get_task("associations_v2")
-params_hash = str(hash((
-    min_support,
-    min_confidence,
-    dist_threshold_km,
-    len(base),
-    SAMPLE_N,
-    TOP_OFFENSE_TYPES,
-    tuple((label, len(layer_df)) for label, layer_df in usgs_layers.items()),
-    tuple(sorted(df["year"].drop_nulls().unique().to_list())),
-)))
+params_hash = str(
+    hash(
+        (
+            min_support,
+            min_confidence,
+            dist_threshold_km,
+            len(base),
+            SAMPLE_N,
+            TOP_OFFENSE_TYPES,
+            tuple((label, len(layer_df)) for label, layer_df in usgs_layers.items()),
+            tuple(sorted(df["year"].drop_nulls().unique().to_list())),
+        )
+    )
+)
 
 if needs_recompute(task, params_hash):
     task.start(
@@ -215,8 +219,7 @@ if itemsets_df.empty:
     st.warning("No se encontraron itemsets frecuentes. Proba reducir el soporte minimo.")
 else:
     itemsets_display = (
-        itemsets_df
-        .assign(items=itemsets_df["itemsets"].apply(lambda x: ", ".join(sorted(x))))
+        itemsets_df.assign(items=itemsets_df["itemsets"].apply(lambda x: ", ".join(sorted(x))))
         .sort_values("support", ascending=False)
         .head(30)[["items", "support"]]
         .reset_index(drop=True)
@@ -231,18 +234,18 @@ if rules_df.empty:
     st.warning("No se generaron reglas. Proba reducir confianza o soporte.")
 else:
     rules_display = (
-        rules_df
-        .assign(
+        rules_df.assign(
             antecedent=rules_df["antecedents"].apply(lambda x: ", ".join(sorted(x))),
             consequent=rules_df["consequents"].apply(lambda x: ", ".join(sorted(x))),
         )
-        .sort_values("confidence", ascending=False)
-        [["antecedent", "consequent", "support", "confidence", "lift"]]
+        .sort_values("confidence", ascending=False)[
+            ["antecedent", "consequent", "support", "confidence", "lift"]
+        ]
         .reset_index(drop=True)
     )
-    rules_display[["support", "confidence", "lift"]] = (
-        rules_display[["support", "confidence", "lift"]].round(4)
-    )
+    rules_display[["support", "confidence", "lift"]] = rules_display[
+        ["support", "confidence", "lift"]
+    ].round(4)
 
     col1, col2, col3 = st.columns(3)
     with col1:
