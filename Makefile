@@ -11,7 +11,7 @@ pipeline: build
 	docker-compose run --rm pipeline
 
 reference: build
-	docker-compose run --rm pipeline python -m src.pipeline --skip-complaints --skip-infrastructure
+	docker-compose run --rm pipeline python -m src.pipeline --skip-complaints
 
 transform: build
 	docker-compose run --rm pipeline python -m src.pipeline --skip-extract

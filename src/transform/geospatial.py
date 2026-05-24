@@ -2,7 +2,7 @@
 Geospatial validation and utility functions.
 
 Provides coordinate validation (filtering rows outside NYC bounding box)
-and distance-based enrichment (nearest police station, nearest transport).
+and distance-based enrichment helpers for nearest infrastructure facilities.
 """
 
 from __future__ import annotations

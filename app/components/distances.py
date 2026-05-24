@@ -48,8 +48,8 @@ def compute_nearest_distances(
 ) -> np.ndarray:
     """For each crime, return the distance to the nearest station in meters.
 
-    Uses numpy broadcasting: O(n_crimes × n_stations) but fully vectorized,
-    which is fast for n_stations < 5000 (all NYC police + transport stations).
+    Uses numpy broadcasting: O(n_crimes x n_stations) but fully vectorized,
+    which is fast for the USGS V2 reference layers used by this dashboard.
 
     Args:
         crime_lats, crime_lons: Tuples of crime coordinates (hashable for cache).

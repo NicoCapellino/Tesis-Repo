@@ -62,16 +62,6 @@ NYPD_DATASETS: dict[str, SocrataDataset] = {
 
 
 # ---------------------------------------------------------------------------
-# Overpass API (OpenStreetMap)
-# ---------------------------------------------------------------------------
-OVERPASS_URLS: list[str] = [
-    "https://overpass-api.de/api/interpreter",
-    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter",
-]
-
-
-# ---------------------------------------------------------------------------
 # City configurations – extensible for future cities
 # ---------------------------------------------------------------------------
 class CityConfig:
@@ -140,8 +130,5 @@ class PipelineSettings(BaseSettings):
     # Year range for extraction
     start_year: int = Field(default=2020, description="First year to extract.")
     end_year: int = Field(default=2025, description="Last year to extract (inclusive).")
-
-    # Overpass
-    overpass_timeout: int = Field(default=120, description="Overpass API timeout in seconds.")
 
     model_config = {"env_prefix": "NYC_PIPELINE_"}
