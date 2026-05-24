@@ -214,25 +214,19 @@ class ComplaintsTransformer:
         # Coordinates → Float64
         for col_name in ("latitude", "longitude"):
             if col_name in df.columns:
-                expressions.append(
-                    pl.col(col_name).cast(pl.Float64, strict=False).alias(col_name)
-                )
+                expressions.append(pl.col(col_name).cast(pl.Float64, strict=False).alias(col_name))
 
         # Integer coordinate system (NY State Plane)
         for col_name in ("x_coordinate", "y_coordinate"):
             if col_name in df.columns:
-                expressions.append(
-                    pl.col(col_name).cast(pl.Int32, strict=False).alias(col_name)
-                )
+                expressions.append(pl.col(col_name).cast(pl.Int32, strict=False).alias(col_name))
 
         # Numeric codes
         for col_name in ("precinct_code", "jurisdiction_code", "offense_key_code", "internal_code"):
             if col_name in df.columns:
-                expressions.append(
-                    pl.col(col_name).cast(pl.Int32, strict=False).alias(col_name)
-                )
+                expressions.append(pl.col(col_name).cast(pl.Int32, strict=False).alias(col_name))
 
-        # Dates – Socrata format: "2024-12-13T00:00:00.000"
+        # Dates - Socrata format: "2024-12-13T00:00:00.000"
         for col_name in ("crime_start_date", "crime_end_date", "report_date"):
             if col_name in df.columns:
                 expressions.append(
@@ -255,10 +249,7 @@ class ComplaintsTransformer:
         string_cols = [c for c in df.columns if df[c].dtype == pl.Utf8]
         if string_cols:
             df = df.with_columns(
-                pl.when(pl.col(c).is_in(null_sentinels))
-                .then(None)
-                .otherwise(pl.col(c))
-                .alias(c)
+                pl.when(pl.col(c).is_in(null_sentinels)).then(None).otherwise(pl.col(c)).alias(c)
                 for c in string_cols
             )
 
@@ -270,11 +261,13 @@ class ComplaintsTransformer:
         expressions: list[pl.Expr] = []
 
         if "crime_start_date" in df.columns:
-            expressions.extend([
-                pl.col("crime_start_date").dt.year().alias("year"),
-                pl.col("crime_start_date").dt.month().alias("month"),
-                pl.col("crime_start_date").dt.weekday().alias("day_of_week"),
-            ])
+            expressions.extend(
+                [
+                    pl.col("crime_start_date").dt.year().alias("year"),
+                    pl.col("crime_start_date").dt.month().alias("month"),
+                    pl.col("crime_start_date").dt.weekday().alias("day_of_week"),
+                ]
+            )
 
         if "crime_start_time" in df.columns:
             expressions.append(

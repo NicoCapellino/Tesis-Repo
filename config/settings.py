@@ -8,11 +8,9 @@ The architecture supports adding new cities by extending the CITY_CONFIGS dictio
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from pydantic import Field
 from pydantic_settings import BaseSettings
-
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -48,7 +46,7 @@ class SocrataDataset:
         return f"{self.base_url}/{self.resource_id}.csv"
 
 
-# Datasets we consume – adding a new one is a single line.
+# Datasets we consume - adding a new one is a single line.
 NYPD_DATASETS: dict[str, SocrataDataset] = {
     "historic": SocrataDataset(
         resource_id="qgea-i56i",
@@ -62,7 +60,7 @@ NYPD_DATASETS: dict[str, SocrataDataset] = {
 
 
 # ---------------------------------------------------------------------------
-# City configurations – extensible for future cities
+# City configurations - extensible for future cities
 # ---------------------------------------------------------------------------
 class CityConfig:
     """Geographical and dataset configuration for a city."""

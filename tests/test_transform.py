@@ -21,33 +21,39 @@ def transformer() -> ComplaintsTransformer:
 @pytest.fixture
 def raw_df() -> pl.DataFrame:
     """Synthetic raw DataFrame mimicking Socrata output (all strings)."""
-    return pl.DataFrame({
-        "cmplnt_num": ["100001", "100002", "100003"],
-        "boro_nm": ["MANHATTAN", "BROOKLYN", "(null)"],
-        "cmplnt_fr_dt": [
-            "2024-06-15T00:00:00.000",
-            "2024-07-20T00:00:00.000",
-            "2024-08-01T00:00:00.000",
-        ],
-        "cmplnt_fr_tm": ["14:30:00", "08:00:00", "23:45:00"],
-        "law_cat_cd": ["FELONY", "MISDEMEANOR", "VIOLATION"],
-        "ofns_desc": ["GRAND LARCENY", "PETIT LARCENY", "HARRASSMENT 2"],
-        "prem_typ_desc": ["STREET", "RESIDENCE-HOUSE", "UNKNOWN"],
-        "latitude": ["40.7580", "40.6782", "0"],
-        "longitude": ["-73.9855", "-73.9442", "0"],
-        "vic_age_group": ["25-44", "UNKNOWN", "18-24"],
-        "vic_race": ["WHITE", "(null)", "BLACK"],
-        "vic_sex": ["M", "F", "M"],
-        "susp_age_group": ["25-44", "18-24", "(null)"],
-        "susp_race": ["BLACK", "WHITE", "UNKNOWN"],
-        "susp_sex": ["M", "M", "(null)"],
-    })
+    return pl.DataFrame(
+        {
+            "cmplnt_num": ["100001", "100002", "100003"],
+            "boro_nm": ["MANHATTAN", "BROOKLYN", "(null)"],
+            "cmplnt_fr_dt": [
+                "2024-06-15T00:00:00.000",
+                "2024-07-20T00:00:00.000",
+                "2024-08-01T00:00:00.000",
+            ],
+            "cmplnt_fr_tm": ["14:30:00", "08:00:00", "23:45:00"],
+            "law_cat_cd": ["FELONY", "MISDEMEANOR", "VIOLATION"],
+            "ofns_desc": ["GRAND LARCENY", "PETIT LARCENY", "HARRASSMENT 2"],
+            "prem_typ_desc": ["STREET", "RESIDENCE-HOUSE", "UNKNOWN"],
+            "latitude": ["40.7580", "40.6782", "0"],
+            "longitude": ["-73.9855", "-73.9442", "0"],
+            "vic_age_group": ["25-44", "UNKNOWN", "18-24"],
+            "vic_race": ["WHITE", "(null)", "BLACK"],
+            "vic_sex": ["M", "F", "M"],
+            "susp_age_group": ["25-44", "18-24", "(null)"],
+            "susp_race": ["BLACK", "WHITE", "UNKNOWN"],
+            "susp_sex": ["M", "M", "(null)"],
+        }
+    )
 
 
 class TestComplaintsTransformer:
     """Tests for the complaints transformation pipeline."""
 
-    def test_column_renaming(self, transformer: ComplaintsTransformer, raw_df: pl.DataFrame) -> None:
+    def test_column_renaming(
+        self,
+        transformer: ComplaintsTransformer,
+        raw_df: pl.DataFrame,
+    ) -> None:
         """Socrata column names should be renamed to descriptive names."""
         result = transformer.transform(raw_df)
 
@@ -72,7 +78,11 @@ class TestComplaintsTransformer:
         premises = result["premise_type"].to_list()
         assert premises[2] is None
 
-    def test_temporal_features(self, transformer: ComplaintsTransformer, raw_df: pl.DataFrame) -> None:
+    def test_temporal_features(
+        self,
+        transformer: ComplaintsTransformer,
+        raw_df: pl.DataFrame,
+    ) -> None:
         """Year, month, day_of_week, and hour should be derived correctly."""
         result = transformer.transform(raw_df)
 
@@ -90,7 +100,11 @@ class TestComplaintsTransformer:
         hours = result["hour"].to_list()
         assert hours == [14, 8, 23]
 
-    def test_coordinate_casting(self, transformer: ComplaintsTransformer, raw_df: pl.DataFrame) -> None:
+    def test_coordinate_casting(
+        self,
+        transformer: ComplaintsTransformer,
+        raw_df: pl.DataFrame,
+    ) -> None:
         """Latitude and longitude should be cast to Float64."""
         result = transformer.transform(raw_df)
 
@@ -100,7 +114,11 @@ class TestComplaintsTransformer:
         lats = result["latitude"].to_list()
         assert lats[0] == pytest.approx(40.758, abs=0.001)
 
-    def test_output_columns_ordered(self, transformer: ComplaintsTransformer, raw_df: pl.DataFrame) -> None:
+    def test_output_columns_ordered(
+        self,
+        transformer: ComplaintsTransformer,
+        raw_df: pl.DataFrame,
+    ) -> None:
         """Output should contain only the defined output columns, in order."""
         result = transformer.transform(raw_df)
 

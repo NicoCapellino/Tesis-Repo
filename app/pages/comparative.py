@@ -78,16 +78,22 @@ st.subheader("Inventario USGS V2")
 
 inventory_rows: list[dict] = []
 for label, layer_df in usgs_layers.items():
-    inventory_rows.append({
-        "capa_v2": label,
-        "instalaciones": len(layer_df),
-        "boroughs": layer_df["borough"].n_unique() if "borough" in layer_df.columns else None,
-        "tipos": layer_df["facility_type"].n_unique() if "facility_type" in layer_df.columns else None,
-    })
+    inventory_rows.append(
+        {
+            "capa_v2": label,
+            "instalaciones": len(layer_df),
+            "boroughs": layer_df["borough"].n_unique() if "borough" in layer_df.columns else None,
+            "tipos": (
+                layer_df["facility_type"].n_unique()
+                if "facility_type" in layer_df.columns
+                else None
+            ),
+        }
+    )
 
 inventory_df = pl.DataFrame(inventory_rows)
 cols = st.columns(len(inventory_rows))
-for col, row in zip(cols, inventory_rows):
+for col, row in zip(cols, inventory_rows, strict=False):
     with col:
         st.metric(row["capa_v2"], f"{row['instalaciones']:,}")
 
@@ -139,14 +145,16 @@ if usgs_police is not None and not usgs_police.is_empty() and "borough" in usgs_
     )
     ratio_df = (
         crimes_by_borough.join(stations_by_borough, on="borough", how="left")
-        .with_columns([
-            pl.col("comisarias_usgs_v2").fill_null(0),
-            pl.when(pl.col("comisarias_usgs_v2") > 0)
-            .then((pl.col("crimenes") / pl.col("comisarias_usgs_v2")).round(0))
-            .otherwise(None)
-            .cast(pl.Int64)
-            .alias("crimenes_por_comisaria_usgs_v2"),
-        ])
+        .with_columns(
+            [
+                pl.col("comisarias_usgs_v2").fill_null(0),
+                pl.when(pl.col("comisarias_usgs_v2") > 0)
+                .then((pl.col("crimenes") / pl.col("comisarias_usgs_v2")).round(0))
+                .otherwise(None)
+                .cast(pl.Int64)
+                .alias("crimenes_por_comisaria_usgs_v2"),
+            ]
+        )
         .sort("crimenes_por_comisaria_usgs_v2", descending=True, nulls_last=True)
     )
 
@@ -200,24 +208,28 @@ for label, layer_df in usgs_layers.items():
     counts = (matrix <= radius_m).sum(axis=0)
 
     for idx, row in enumerate(layer_df.iter_rows(named=True)):
-        exposure_rows.append({
-            "capa_v2": label,
-            "facility_index": idx,
-            "name": _safe_name(row, idx, label),
-            "facility_type": _facility_type(row, label),
-            "borough": row.get("borough"),
-            "crimenes_en_radio": int(counts[idx]),
-        })
+        exposure_rows.append(
+            {
+                "capa_v2": label,
+                "facility_index": idx,
+                "name": _safe_name(row, idx, label),
+                "facility_type": _facility_type(row, label),
+                "borough": row.get("borough"),
+                "crimenes_en_radio": int(counts[idx]),
+            }
+        )
 
 exposure_df = pl.DataFrame(exposure_rows)
 summary_df = (
     exposure_df.group_by("capa_v2")
-    .agg([
-        pl.len().alias("instalaciones"),
-        pl.col("crimenes_en_radio").mean().round(1).alias("media_crimenes_radio"),
-        pl.col("crimenes_en_radio").median().alias("mediana_crimenes_radio"),
-        pl.col("crimenes_en_radio").max().alias("max_crimenes_radio"),
-    ])
+    .agg(
+        [
+            pl.len().alias("instalaciones"),
+            pl.col("crimenes_en_radio").mean().round(1).alias("media_crimenes_radio"),
+            pl.col("crimenes_en_radio").median().alias("mediana_crimenes_radio"),
+            pl.col("crimenes_en_radio").max().alias("max_crimenes_radio"),
+        ]
+    )
     .sort("media_crimenes_radio", descending=True)
 )
 dataframe(summary_df.to_pandas(), hide_index=True)
@@ -259,22 +271,26 @@ st.subheader("V2: capa USGS mas cercana a cada crimen")
 
 nearest_rows: list[dict] = []
 for label, matrix in matrices.items():
-    nearest_rows.append({
-        "capa_v2": label,
-        "dist_m": matrix.min(axis=1),
-    })
+    nearest_rows.append(
+        {
+            "capa_v2": label,
+            "dist_m": matrix.min(axis=1),
+        }
+    )
 
 nearest_distances = np.vstack([row["dist_m"] for row in nearest_rows])
 nearest_idx = nearest_distances.argmin(axis=0)
 nearest_labels = [nearest_rows[i]["capa_v2"] for i in nearest_idx]
 nearest_min_km = nearest_distances.min(axis=0) / 1000
 
-nearest_df = pl.DataFrame({
-    "capa_v2_mas_cercana": nearest_labels,
-    "distancia_min_km": nearest_min_km,
-    "offense_level": sample["offense_level"].to_list(),
-    "offense_description": sample["offense_description"].to_list(),
-})
+nearest_df = pl.DataFrame(
+    {
+        "capa_v2_mas_cercana": nearest_labels,
+        "distancia_min_km": nearest_min_km,
+        "offense_level": sample["offense_level"].to_list(),
+        "offense_description": sample["offense_description"].to_list(),
+    }
+)
 
 nearest_counts = (
     nearest_df.group_by("capa_v2_mas_cercana")

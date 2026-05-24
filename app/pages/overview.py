@@ -42,8 +42,10 @@ st.markdown(
     - **Demografico**: Perfil de victimas y sospechosos, tipos de premisa.
 
     **Analisis Avanzado V2** - Cruce de datos e inteligencia artificial con infraestructura USGS:
-    - **Comparativo**: Ratio crimenes/comisarias USGS, exposicion por instalaciones y capa USGS mas cercana.
-    - **Proximidad**: Boxplots y tablas cruzadas de crimenes cerca vs. lejos de policia, bomberos y salud USGS.
+    - **Comparativo**: Ratio crimenes/comisarias USGS, exposicion por instalaciones
+      y capa USGS mas cercana.
+    - **Proximidad**: Boxplots y tablas cruzadas de crimenes cerca vs. lejos de
+      policia, bomberos y salud USGS.
     - **Clustering K-Means**: Zonas de alta criminalidad identificadas por ML.
     - **Reglas de Asociacion**: Patrones entre tipo de delito y proximidad a capas USGS V2.
     - **Prediccion ML**: Random Forest y Gradient Boosting con features de distancia USGS V2.

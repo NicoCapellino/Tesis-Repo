@@ -8,6 +8,7 @@ consistent compression, partitioning, and metadata.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import polars as pl
 
@@ -15,8 +16,10 @@ from src.utils.logging import get_logger
 
 log = get_logger(__name__)
 
-# Default compression – Zstandard offers the best balance of speed and ratio
-DEFAULT_COMPRESSION: str = "zstd"
+Compression = Literal["lz4", "uncompressed", "snappy", "gzip", "brotli", "zstd"]
+
+# Default compression - Zstandard offers the best balance of speed and ratio
+DEFAULT_COMPRESSION: Compression = "zstd"
 
 
 class ParquetWriter:
@@ -34,7 +37,7 @@ class ParquetWriter:
         self,
         output_dir: Path,
         *,
-        compression: str = DEFAULT_COMPRESSION,
+        compression: Compression = DEFAULT_COMPRESSION,
     ) -> None:
         self.output_dir = output_dir
         self.compression = compression
@@ -74,8 +77,7 @@ class ParquetWriter:
         """
         if partition_col not in df.columns:
             raise ValueError(
-                f"Partition column '{partition_col}' not found. "
-                f"Available: {df.columns}"
+                f"Partition column '{partition_col}' not found. Available: {df.columns}"
             )
 
         paths: list[Path] = []

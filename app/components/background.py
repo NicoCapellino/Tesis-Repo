@@ -26,12 +26,17 @@ class BackgroundTask:
     """Tarea en segundo plano con seguimiento de progreso."""
 
     __slots__ = (
-        "status", "progress", "message", "result",
-        "error", "params_hash", "_notified",
+        "_notified",
+        "error",
+        "message",
+        "params_hash",
+        "progress",
+        "result",
+        "status",
     )
 
     def __init__(self) -> None:
-        self.status: str = "idle"       # idle | running | done | error
+        self.status: str = "idle"  # idle | running | done | error
         self.progress: float = 0.0
         self.message: str = ""
         self.result = None
@@ -93,8 +98,10 @@ def show_progress_or_result(task: BackgroundTask) -> bool:
     """
     if task.status == "running":
         st.progress(task.progress, text=task.message)
-        st.info("💡 Podés navegar a otra pestaña mientras se procesa. "
-                "Los resultados se guardarán automáticamente.")
+        st.info(
+            "💡 Podés navegar a otra pestaña mientras se procesa. "
+            "Los resultados se guardarán automáticamente."
+        )
         time.sleep(1)
         st.rerun()
         return False  # unreachable, for type checker
