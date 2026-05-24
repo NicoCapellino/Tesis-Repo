@@ -25,6 +25,7 @@ from app.components.background import (
     needs_recompute,
     show_progress_or_result,
 )
+from app.components.display import dataframe, plotly_chart
 from app.components.distances import add_distance_column
 from app.components.filters import get_filtered_data, get_usgs_v2_layers
 
@@ -361,7 +362,7 @@ fig_cv = px.bar(
 )
 fig_cv.update_traces(texttemplate="%{text:.3f}", textposition="outside")
 fig_cv.update_layout(yaxis=dict(range=[0, 1]))
-st.plotly_chart(fig_cv, width="stretch")
+plotly_chart(fig_cv)
 
 cv_summary = pd.DataFrame({
     "Modelo": [primary["model_name"], secondary["model_name"]],
@@ -369,7 +370,7 @@ cv_summary = pd.DataFrame({
     "CV Std": [primary["cv_std"], secondary["cv_std"]],
     "Holdout Accuracy": [primary["accuracy"], secondary["accuracy"]],
 }).round(4)
-st.dataframe(cv_summary, width="stretch", hide_index=True)
+dataframe(cv_summary, hide_index=True)
 
 st.markdown("---")
 st.subheader(f"V2: matriz de confusion - {primary['model_name']}")
@@ -384,7 +385,7 @@ fig_cm = px.imshow(
     title=f"V2: matriz de confusion - {primary['model_name']}",
 )
 fig_cm.update_layout(width=600, height=500)
-st.plotly_chart(fig_cm, width="stretch")
+plotly_chart(fig_cm)
 
 st.subheader("V2: reporte de clasificacion")
 st.code(primary["report"], language="text")
@@ -412,7 +413,7 @@ fig_imp = px.bar(
     color_continuous_scale="YlOrRd",
 )
 fig_imp.update_layout(showlegend=False, coloraxis_showscale=False)
-st.plotly_chart(fig_imp, width="stretch")
+plotly_chart(fig_imp)
 
 st.markdown("---")
 st.subheader("V2: features USGS aplicadas")
@@ -427,7 +428,7 @@ for label in usgs_layers:
         "feature": f"log_dist_{slug}_km",
         "descripcion": f"Log de distancia a {label}",
     })
-st.dataframe(pd.DataFrame(distance_feature_rows), width="stretch", hide_index=True)
+dataframe(pd.DataFrame(distance_feature_rows), hide_index=True)
 
 feat_ranks = pd.DataFrame({
     "feature": primary["feature_names"],

@@ -26,6 +26,7 @@ from app.components.background import (
     needs_recompute,
     show_progress_or_result,
 )
+from app.components.display import dataframe, plotly_chart
 from app.components.filters import get_filtered_data
 
 st.header("Detección de Anomalías — Isolation Forest")
@@ -243,7 +244,7 @@ if "date" in result_df.columns:
         yaxis_title="Cantidad de crímenes",
         hovermode="x unified",
     )
-    st.plotly_chart(fig_timeline, width="stretch")
+    plotly_chart(fig_timeline)
 
 # ── Tabla de top anomalías ───────────────────────────────────────────────────
 st.markdown("---")
@@ -271,7 +272,7 @@ if not top_anomalies.empty:
     display_df["anomaly_score"] = display_df["anomaly_score"].round(4)
     if "date" in display_df.columns:
         display_df["date"] = display_df["date"].astype(str)
-    st.dataframe(display_df, width="stretch", hide_index=True)
+    dataframe(display_df, hide_index=True)
 else:
     st.info("No se detectaron anomalías con los parámetros actuales.")
 
@@ -309,7 +310,7 @@ if "borough" in result_df.columns and n_anomalies > 0:
         color_continuous_scale="YlOrRd",
     )
     fig_borough.update_traces(textposition="outside")
-    st.plotly_chart(fig_borough, width="stretch")
+    plotly_chart(fig_borough)
 
 # ── Histograma de scores ────────────────────────────────────────────────────
 st.markdown("---")
@@ -330,4 +331,4 @@ fig_hist = px.histogram(
     barmode="overlay",
 )
 fig_hist.update_layout(bargap=0.05)
-st.plotly_chart(fig_hist, width="stretch")
+plotly_chart(fig_hist)

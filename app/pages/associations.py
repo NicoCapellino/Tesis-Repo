@@ -23,6 +23,7 @@ from app.components.background import (
     needs_recompute,
     show_progress_or_result,
 )
+from app.components.display import dataframe, plotly_chart
 from app.components.distances import haversine_np
 from app.components.filters import get_filtered_data, get_usgs_v2_layers
 
@@ -221,7 +222,7 @@ else:
         .reset_index(drop=True)
     )
     itemsets_display["support"] = itemsets_display["support"].round(4)
-    st.dataframe(itemsets_display, width="stretch", hide_index=True)
+    dataframe(itemsets_display, hide_index=True)
 
 st.markdown("---")
 st.subheader("V2: reglas de asociacion")
@@ -254,9 +255,8 @@ else:
     def _highlight_lift(row: pd.Series) -> list[str]:
         return ["background-color: #fff3cd" if row["lift"] > 1.5 else "" for _ in row]
 
-    st.dataframe(
+    dataframe(
         rules_display.style.apply(_highlight_lift, axis=1),
-        width="stretch",
         hide_index=True,
     )
     st.caption(
@@ -278,4 +278,4 @@ else:
         labels={"support": "Soporte", "confidence": "Confianza", "lift": "Lift"},
         title="V2: top 50 reglas USGS",
     )
-    st.plotly_chart(fig_scatter, width="stretch")
+    plotly_chart(fig_scatter)

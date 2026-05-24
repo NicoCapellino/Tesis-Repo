@@ -14,6 +14,7 @@ import plotly.express as px
 import polars as pl
 import streamlit as st
 
+from app.components.display import plotly_chart
 from app.components.filters import get_filtered_data
 
 st.header("Análisis Demográfico")
@@ -46,7 +47,7 @@ fig_offenses = px.bar(
 )
 fig_offenses.update_traces(texttemplate="%{text:,}")
 fig_offenses.update_layout(yaxis=dict(autorange="reversed"))
-st.plotly_chart(fig_offenses, width="stretch")
+plotly_chart(fig_offenses)
 
 
 # ---------------------------------------------------------------------------
@@ -86,7 +87,7 @@ with col1:
         values="len",
         title="Grupo etario de víctimas",
     )
-    st.plotly_chart(fig_age, width="stretch")
+    plotly_chart(fig_age)
 
 with col2:
     vic_sex = (
@@ -106,7 +107,7 @@ with col2:
         values="len",
         title="Sexo de víctimas",
     )
-    st.plotly_chart(fig_sex, width="stretch")
+    plotly_chart(fig_sex)
 
 with col3:
     vic_race = (
@@ -121,7 +122,7 @@ with col3:
         values="len",
         title="Raza de víctimas",
     )
-    st.plotly_chart(fig_race, width="stretch")
+    plotly_chart(fig_race)
 
 
 # ---------------------------------------------------------------------------
@@ -148,4 +149,4 @@ fig_premise = px.bar(
 )
 fig_premise.update_traces(texttemplate="%{text:,}")
 fig_premise.update_layout(yaxis=dict(autorange="reversed"))
-st.plotly_chart(fig_premise, width="stretch")
+plotly_chart(fig_premise)

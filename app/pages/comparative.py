@@ -15,6 +15,7 @@ import streamlit as st
 from folium.plugins import HeatMap
 from streamlit_folium import st_folium
 
+from app.components.display import dataframe, plotly_chart
 from app.components.distances import haversine_np
 from app.components.filters import get_filtered_data, get_usgs_police_v2, get_usgs_v2_layers
 from config.settings import CITY_CONFIGS, DEFAULT_CITY
@@ -90,7 +91,7 @@ for col, row in zip(cols, inventory_rows):
     with col:
         st.metric(row["capa_v2"], f"{row['instalaciones']:,}")
 
-st.dataframe(inventory_df.to_pandas(), width="stretch", hide_index=True)
+dataframe(inventory_df.to_pandas(), hide_index=True)
 
 facility_frames: list[pl.DataFrame] = []
 for label, layer_df in usgs_layers.items():
@@ -115,7 +116,7 @@ if facility_frames:
         title="USGS V2: instalaciones por borough",
         labels={"borough": "Borough", "instalaciones": "Instalaciones", "capa_v2": "Capa"},
     )
-    st.plotly_chart(fig_inventory, width="stretch")
+    plotly_chart(fig_inventory)
 
 
 # ---------------------------------------------------------------------------
@@ -163,8 +164,8 @@ if usgs_police is not None and not usgs_police.is_empty() and "borough" in usgs_
     )
     fig_ratio.update_traces(texttemplate="%{text:,}", textposition="outside")
     fig_ratio.update_layout(showlegend=False)
-    st.plotly_chart(fig_ratio, width="stretch")
-    st.dataframe(ratio_df.to_pandas(), width="stretch", hide_index=True)
+    plotly_chart(fig_ratio)
+    dataframe(ratio_df.to_pandas(), hide_index=True)
 
 
 # ---------------------------------------------------------------------------
@@ -219,7 +220,7 @@ summary_df = (
     ])
     .sort("media_crimenes_radio", descending=True)
 )
-st.dataframe(summary_df.to_pandas(), width="stretch", hide_index=True)
+dataframe(summary_df.to_pandas(), hide_index=True)
 
 top_exposure = exposure_df.sort("crimenes_en_radio", descending=True).head(20)
 
@@ -247,8 +248,8 @@ fig_top = px.bar(
     labels={"name": "Instalacion", "crimenes_en_radio": "Crimenes en radio"},
 )
 fig_top.update_layout(yaxis=dict(autorange="reversed"))
-st.plotly_chart(fig_top, width="stretch")
-st.dataframe(top_exposure_display.drop("facility_index").to_pandas(), width="stretch", hide_index=True)
+plotly_chart(fig_top)
+dataframe(top_exposure_display.drop("facility_index").to_pandas(), hide_index=True)
 
 
 # ---------------------------------------------------------------------------
@@ -292,7 +293,7 @@ fig_nearest = px.bar(
 )
 fig_nearest.update_traces(texttemplate="%{text:,}", textposition="outside")
 fig_nearest.update_layout(showlegend=False)
-st.plotly_chart(fig_nearest, width="stretch")
+plotly_chart(fig_nearest)
 
 severity_nearest = (
     nearest_df.filter(pl.col("offense_level").is_not_null())
@@ -313,7 +314,7 @@ fig_severity = px.bar(
         "offense_level": "Nivel",
     },
 )
-st.plotly_chart(fig_severity, width="stretch")
+plotly_chart(fig_severity)
 
 
 # ---------------------------------------------------------------------------
@@ -382,4 +383,4 @@ fig_stacked = px.bar(
     labels={"len": "Cantidad", "borough": "Borough", "offense_level": "Nivel"},
     title="Crimenes por borough y nivel de ofensa",
 )
-st.plotly_chart(fig_stacked, width="stretch")
+plotly_chart(fig_stacked)
