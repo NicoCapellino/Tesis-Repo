@@ -19,12 +19,12 @@ Verified FCodes for NYC (from live WFS, May 2026):
 
 from __future__ import annotations
 
-import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import httpx
 import polars as pl
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from config.settings import REFERENCE_DIR, PipelineSettings
 from src.utils.logging import get_logger
@@ -48,6 +48,7 @@ NYC_ZIP_PREFIXES: dict[str, str] = {
     "102": "MANHATTAN",
     "103": "STATEN ISLAND",
     "104": "BRONX",
+    "111": "QUEENS",
     "112": "BROOKLYN",
     "113": "QUEENS",
     "114": "QUEENS",
@@ -69,7 +70,14 @@ HEALTHCARE_FCODE_MAP: dict[str, str] = {
 POLICE_FCODES: frozenset[str] = frozenset({"74034"})
 FIRE_FCODES:   frozenset[str] = frozenset({"74026"})
 
-NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+
+def _is_retryable_usgs_error(exc: BaseException) -> bool:
+    """Return True for transient USGS WFS errors worth retrying."""
+    if isinstance(exc, httpx.TransportError):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code >= 500
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -229,13 +237,7 @@ class USGSStructuresExtractor:
         xml_body = self._build_xml_filter(ftype)
         log.info("usgs_wfs_request", ftype=ftype, url=WFS_URL)
 
-        with httpx.Client(timeout=90) as client:
-            resp = client.post(
-                WFS_URL,
-                content=xml_body,
-                headers={"Content-Type": "application/xml"},
-            )
-            resp.raise_for_status()
+        resp = self._post_wfs(xml_body, ftype=ftype)
 
         root = ET.fromstring(resp.text)
         log.info(
@@ -274,55 +276,40 @@ class USGSStructuresExtractor:
             schema={f: pl.Utf8 for f in ATTR_FIELDS} | {"lat": pl.Float64, "lon": pl.Float64},
         )
 
-        # Geocode records that still have no coordinates
-        null_mask = df["lat"].is_null()
+        # Keep the extractor USGS-only: rows without USGS geometry are omitted
+        # instead of being geocoded through a secondary provider.
+        null_mask = df["lat"].is_null() | df["lon"].is_null()
         n_null = int(null_mask.sum())
         if n_null > 0:
-            log.info("usgs_geocoding_needed", count=n_null)
-            df = self._geocode_nulls(df)
+            log.warning("usgs_missing_geometry_dropped", count=n_null)
+            df = df.filter(pl.col("lat").is_not_null() & pl.col("lon").is_not_null())
 
         return df
 
     # ------------------------------------------------------------------
-    # Nominatim geocoding fallback
+    # USGS HTTP
     # ------------------------------------------------------------------
 
-    def _geocode_nulls(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Geocode rows with null lat/lon using Nominatim (1 req/sec)."""
-        rows_updated = df.to_dicts()
-
-        with httpx.Client(
-            timeout=30,
-            headers={"User-Agent": "NYC-Crime-Thesis/1.0 (thesis research)"},
-        ) as client:
-            for row in rows_updated:
-                if row["lat"] is not None:
-                    continue
-
-                address = row.get("ADDRESS") or ""
-                city_name = row.get("CITY") or "New York"
-                query = f"{address}, {city_name}, NY, USA".strip(", ")
-
-                try:
-                    resp = client.get(
-                        NOMINATIM_URL,
-                        params={"q": query, "format": "json", "limit": 1, "countrycodes": "us"},
-                    )
-                    resp.raise_for_status()
-                    results = resp.json()
-                    if results:
-                        row["lat"] = float(results[0]["lat"])
-                        row["lon"] = float(results[0]["lon"])
-                        log.debug("geocoded", name=row.get("NAME"), lat=row["lat"], lon=row["lon"])
-                except Exception:
-                    log.warning("geocode_failed", name=row.get("NAME"), query=query, exc_info=True)
-
-                time.sleep(1.1)  # Nominatim rate limit: 1 req/sec
-
-        return pl.DataFrame(
-            rows_updated,
-            schema=df.schema,
-        )
+    @retry(
+        retry=retry_if_exception(_is_retryable_usgs_error),
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=2, min=2, max=30),
+        reraise=True,
+    )
+    def _post_wfs(self, xml_body: bytes, *, ftype: int) -> httpx.Response:
+        """POST the WFS request with retries for transient transport/5xx failures."""
+        with httpx.Client(timeout=self.settings.request_timeout_seconds) as client:
+            resp = client.post(
+                WFS_URL,
+                content=xml_body,
+                headers={"Content-Type": "application/xml"},
+            )
+            try:
+                resp.raise_for_status()
+            except httpx.HTTPStatusError:
+                log.warning("usgs_wfs_http_error", ftype=ftype, status_code=resp.status_code)
+                raise
+            return resp
 
     # ------------------------------------------------------------------
     # NYC filtering

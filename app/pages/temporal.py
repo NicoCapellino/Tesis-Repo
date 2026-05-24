@@ -14,6 +14,7 @@ import plotly.graph_objects as go
 import polars as pl
 import streamlit as st
 
+from app.components.display import plotly_chart
 from app.components.filters import get_filtered_data
 
 st.header("Análisis Temporal")
@@ -44,7 +45,7 @@ fig_monthly = px.line(
     title="Evolución mensual de crímenes por nivel de ofensa",
 )
 fig_monthly.update_layout(xaxis_tickangle=-45)
-st.plotly_chart(fig_monthly, width="stretch")
+plotly_chart(fig_monthly)
 
 
 # ---------------------------------------------------------------------------
@@ -82,7 +83,7 @@ if not heatmap_data.is_empty():
         xaxis_title="Hora del día",
         yaxis_title="Día de la semana",
     )
-    st.plotly_chart(fig_heatmap, width="stretch")
+    plotly_chart(fig_heatmap)
 else:
     st.info("No hay datos temporales disponibles con los filtros actuales.")
 
@@ -103,4 +104,4 @@ fig_yearly = px.bar(
     text="len",
 )
 fig_yearly.update_traces(texttemplate="%{text:,}", textposition="outside")
-st.plotly_chart(fig_yearly, width="stretch")
+plotly_chart(fig_yearly)

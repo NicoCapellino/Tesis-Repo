@@ -14,6 +14,7 @@ import pytest
 
 from config.settings import NYPD_DATASETS, PipelineSettings
 from src.extract.nypd_complaints import NYPDComplaintsExtractor
+from src.extract.usgs_structures import USGSStructuresExtractor
 
 
 @pytest.fixture
@@ -99,3 +100,95 @@ class TestNYPDComplaintsExtractor:
 
         # Same 2 records from 2 datasets → should be deduplicated to 2
         assert len(result) == 2
+
+
+class TestUSGSStructuresExtractor:
+    """Tests for USGS WFS parsing and NYC filtering."""
+
+    def test_filter_nyc_includes_queens_111_zip_prefix(self) -> None:
+        """ZIP prefix 111 should be retained and mapped to Queens."""
+        df = pl.DataFrame({
+            "NAME": ["LIC Station", "Manhattan Facility", "Long Island Facility"],
+            "FType": ["740", "800", "800"],
+            "FCode": ["74034", "80010", "80010"],
+            "ADDRESS": ["1 Court Sq", "1 Main St", "1 Other St"],
+            "CITY": ["Long Island City", "New York", "Mineola"],
+            "STATE": ["NY", "NY", "NY"],
+            "ZIPCODE": ["11101", "10001", "11501"],
+            "LOADDATE": ["2026-01-01", "2026-01-01", "2026-01-01"],
+            "lat": [40.746, 40.75, 40.74],
+            "lon": [-73.944, -73.99, -73.64],
+        })
+
+        result = USGSStructuresExtractor._filter_nyc(df)
+
+        assert result["ZIPCODE"].to_list() == ["11101", "10001"]
+        assert result["borough"].to_list() == ["QUEENS", "MANHATTAN"]
+
+    def test_fetch_ny_parses_gml_geometry_and_drops_missing_geometry(self) -> None:
+        """WFS parser should use USGS geometry and omit records without coordinates."""
+        xml = """<?xml version="1.0"?>
+<wfs:FeatureCollection xmlns:wfs="http://www.opengis.net/wfs/2.0"
+                       xmlns:gml="http://www.opengis.net/gml/3.2"
+                       xmlns:structures="https://example.com/structures"
+                       numberMatched="2" numberReturned="2">
+  <wfs:member>
+    <structures:USGS_TNM_Structures>
+      <structures:NAME>Valid Police Station</structures:NAME>
+      <structures:FType>740</structures:FType>
+      <structures:FCode>74034</structures:FCode>
+      <structures:ADDRESS>1 Main St</structures:ADDRESS>
+      <structures:CITY>New York</structures:CITY>
+      <structures:STATE>NY</structures:STATE>
+      <structures:ZIPCODE>10001</structures:ZIPCODE>
+      <structures:LOADDATE>2026-01-01</structures:LOADDATE>
+      <gml:Point><gml:pos>40.7501 -73.9901</gml:pos></gml:Point>
+    </structures:USGS_TNM_Structures>
+  </wfs:member>
+  <wfs:member>
+    <structures:USGS_TNM_Structures>
+      <structures:NAME>Missing Geometry</structures:NAME>
+      <structures:FType>740</structures:FType>
+      <structures:FCode>74034</structures:FCode>
+      <structures:ADDRESS>2 Main St</structures:ADDRESS>
+      <structures:CITY>New York</structures:CITY>
+      <structures:STATE>NY</structures:STATE>
+      <structures:ZIPCODE>10002</structures:ZIPCODE>
+      <structures:LOADDATE>2026-01-01</structures:LOADDATE>
+    </structures:USGS_TNM_Structures>
+  </wfs:member>
+</wfs:FeatureCollection>"""
+
+        response = MagicMock(text=xml)
+        extractor = USGSStructuresExtractor()
+
+        with patch.object(extractor, "_post_wfs", return_value=response):
+            result = extractor._fetch_ny(ftype=740)
+
+        assert len(result) == 1
+        assert result["NAME"].to_list() == ["Valid Police Station"]
+        assert result["lat"].to_list()[0] == pytest.approx(40.7501)
+        assert result["lon"].to_list()[0] == pytest.approx(-73.9901)
+
+    def test_extract_law_enforcement_filters_to_police_fcode(self) -> None:
+        """Law enforcement extraction should keep only police station FCodes."""
+        raw = pl.DataFrame({
+            "NAME": ["Police", "Fire"],
+            "FType": ["740", "740"],
+            "FCode": ["74034", "74026"],
+            "ADDRESS": ["1 Main", "2 Main"],
+            "CITY": ["New York", "New York"],
+            "STATE": ["NY", "NY"],
+            "ZIPCODE": ["10001", "10002"],
+            "LOADDATE": ["2026-01-01", "2026-01-01"],
+            "lat": [40.75, 40.76],
+            "lon": [-73.99, -73.98],
+        })
+        extractor = USGSStructuresExtractor()
+
+        with patch.object(extractor, "_fetch_ny", return_value=raw):
+            result = extractor.extract_law_enforcement("new_york")
+
+        assert len(result) == 1
+        assert result["name"].to_list() == ["Police"]
+        assert result["facility_type"].to_list() == ["Police Station"]

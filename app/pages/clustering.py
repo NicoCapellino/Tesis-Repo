@@ -26,6 +26,7 @@ from app.components.background import (
     needs_recompute,
     show_progress_or_result,
 )
+from app.components.display import dataframe, plotly_chart
 from app.components.filters import get_filtered_data
 from config.settings import CITY_CONFIGS, DEFAULT_CITY
 
@@ -224,7 +225,7 @@ fig_elbow.add_vline(
     line_color="red",
     annotation_text=f"k actual = {k}",
 )
-st.plotly_chart(fig_elbow, width="stretch")
+plotly_chart(fig_elbow)
 
 st.markdown("---")
 
@@ -237,11 +238,10 @@ centers_df = pl.DataFrame({
     "lon_centro": [float(c[0]) for c in centers],
 }).join(cluster_counts, on="cluster", how="left").sort("crimenes", descending=True)
 
-st.dataframe(
+dataframe(
     centers_df.with_columns(
         pl.col("lat_centro").round(5),
         pl.col("lon_centro").round(5),
     ).to_pandas(),
-    width="stretch",
     hide_index=True,
 )

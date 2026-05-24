@@ -15,6 +15,7 @@ import plotly.express as px
 import polars as pl
 import streamlit as st
 
+from app.components.display import dataframe, plotly_chart
 from app.components.distances import add_distance_column, compute_nearest_distances
 from app.components.filters import get_filtered_data, get_usgs_v2_layers
 
@@ -150,7 +151,7 @@ if not hour_df.is_empty():
     )
     fig_hour.update_traces(boxmean=True, jitter=0.3, marker=dict(opacity=0.2, size=2))
     fig_hour.update_layout(showlegend=False, yaxis=dict(dtick=1, range=[-0.5, 23.5]))
-    st.plotly_chart(fig_hour, width="stretch")
+    plotly_chart(fig_hour)
 
     hour_stats = (
         hour_df.group_by("grupo_v2")
@@ -164,7 +165,7 @@ if not hour_df.is_empty():
         ])
         .with_columns((pl.col("q3") - pl.col("q1")).round(2).alias("iqr"))
     )
-    st.dataframe(hour_stats.to_pandas(), width="stretch", hide_index=True)
+    dataframe(hour_stats.to_pandas(), hide_index=True)
 else:
     st.info("No hay datos de hora disponibles.")
 
@@ -197,7 +198,7 @@ if not crime_dist_top.is_empty():
     )
     fig_crime_dist.update_traces(boxmean=True)
     fig_crime_dist.update_layout(showlegend=False, xaxis_tickangle=-45, height=600)
-    st.plotly_chart(fig_crime_dist, width="stretch")
+    plotly_chart(fig_crime_dist)
 
 
 # ---------------------------------------------------------------------------
@@ -235,7 +236,7 @@ for label, col_name in distance_cols.items():
     })
 
 summary_v2 = pd.DataFrame(summary_rows)
-st.dataframe(summary_v2, width="stretch", hide_index=True)
+dataframe(summary_v2, hide_index=True)
 
 fig_summary = px.bar(
     summary_v2,
@@ -248,7 +249,7 @@ fig_summary = px.bar(
 )
 fig_summary.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
 fig_summary.update_layout(showlegend=False)
-st.plotly_chart(fig_summary, width="stretch")
+plotly_chart(fig_summary)
 
 
 # ---------------------------------------------------------------------------
@@ -281,7 +282,7 @@ crime_type_stats = (
     .sort("total", descending=True)
     .head(20)
 )
-st.dataframe(crime_type_stats.to_pandas(), width="stretch", hide_index=True)
+dataframe(crime_type_stats.to_pandas(), hide_index=True)
 
 
 # ---------------------------------------------------------------------------
@@ -320,6 +321,6 @@ if other_options:
         .sort("bin_referencia", "bin_comparada")
     )
     pivot = cross_df.pivot(on="bin_comparada", index="bin_referencia", values="crimenes")
-    st.dataframe(pivot.to_pandas().set_index("bin_referencia"), width="stretch")
+    dataframe(pivot.to_pandas().set_index("bin_referencia"))
 else:
     st.info("Se necesita mas de una capa USGS V2 para la tabla cruzada.")

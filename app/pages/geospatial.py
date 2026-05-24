@@ -16,6 +16,7 @@ import streamlit as st
 from folium.plugins import HeatMap
 from streamlit_folium import st_folium
 
+from app.components.display import plotly_chart
 from app.components.filters import get_filtered_data, get_usgs_v2_layers
 from config.settings import CITY_CONFIGS, DEFAULT_CITY
 
@@ -95,4 +96,4 @@ fig_borough = px.bar(
 )
 fig_borough.update_traces(texttemplate="%{text:,}", textposition="outside")
 fig_borough.update_layout(showlegend=False)
-st.plotly_chart(fig_borough, width="stretch")
+plotly_chart(fig_borough)
