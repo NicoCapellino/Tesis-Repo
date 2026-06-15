@@ -26,6 +26,7 @@ class BackgroundTask:
     """Tarea en segundo plano con seguimiento de progreso."""
 
     __slots__ = (
+        "_lock",
         "_notified",
         "error",
         "message",
@@ -33,7 +34,6 @@ class BackgroundTask:
         "progress",
         "result",
         "status",
-        "_lock",
     )
 
     def __init__(self) -> None:

@@ -7,8 +7,6 @@ features.
 
 from __future__ import annotations
 
-from app.components.utils import slugify as _slug
-
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -28,6 +26,7 @@ from app.components.background import (
 from app.components.display import dataframe, plotly_chart
 from app.components.distances import add_distance_column
 from app.components.filters import get_filtered_data, get_usgs_v2_layers
+from app.components.utils import slugify as _slug
 
 st.header("Prediccion V2: Nivel de Ofensa con features USGS")
 st.markdown(
