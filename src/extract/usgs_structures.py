@@ -316,7 +316,10 @@ class USGSStructuresExtractor:
                         ftype=ftype,
                         matched=n_matched,
                         returned=n_returned,
-                        message=f"Se perdieron {n_matched - n_returned} registros. Considerar implementar paginacion WFS.",
+                        message=(
+                            f"Se perdieron {n_matched - n_returned} registros. "
+                            "Considerar implementar paginacion WFS."
+                        ),
                     )
             except ValueError:
                 pass

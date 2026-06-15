@@ -7,8 +7,6 @@ healthcare.
 
 from __future__ import annotations
 
-from app.components.utils import slugify as _slug
-
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -18,6 +16,7 @@ import streamlit as st
 from app.components.display import dataframe, plotly_chart
 from app.components.distances import add_distance_column, compute_nearest_distances
 from app.components.filters import get_filtered_data, get_usgs_v2_layers
+from app.components.utils import slugify as _slug
 
 st.header("Proximidad V2: Crimenes cerca vs. lejos de infraestructura USGS")
 
