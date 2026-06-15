@@ -26,43 +26,55 @@ class BackgroundTask:
     """Tarea en segundo plano con seguimiento de progreso."""
 
     __slots__ = (
-        "status", "progress", "message", "result",
-        "error", "params_hash", "_notified",
+        "_lock",
+        "_notified",
+        "error",
+        "message",
+        "params_hash",
+        "progress",
+        "result",
+        "status",
     )
 
     def __init__(self) -> None:
-        self.status: str = "idle"       # idle | running | done | error
+        self.status: str = "idle"  # idle | running | done | error
         self.progress: float = 0.0
         self.message: str = ""
         self.result = None
         self.error: str | None = None
         self.params_hash: str = ""
         self._notified: bool = False
+        self._lock = threading.Lock()
 
     def update(self, progress: float, message: str = "") -> None:
         """Actualiza progreso (llamar desde el hilo de trabajo)."""
-        self.progress = min(progress, 0.99)
-        if message:
-            self.message = message
+        with self._lock:
+            self.progress = min(progress, 0.99)
+            if message:
+                self.message = message
 
     def start(self, func, *args) -> None:
         """Inicia la función en un hilo separado. func recibe (task, *args)."""
-        self.status = "running"
-        self.progress = 0.0
-        self.message = "Iniciando..."
-        self.error = None
-        self.result = None
-        self._notified = False
+        with self._lock:
+            self.status = "running"
+            self.progress = 0.0
+            self.message = "Iniciando..."
+            self.error = None
+            self.result = None
+            self._notified = False
 
         def _worker():
             try:
-                self.result = func(self, *args)
-                self.status = "done"
-                self.progress = 1.0
-                self.message = "¡Completado!"
+                res = func(self, *args)
+                with self._lock:
+                    self.result = res
+                    self.status = "done"
+                    self.progress = 1.0
+                    self.message = "¡Completado!"
             except Exception as exc:
-                self.status = "error"
-                self.error = str(exc)
+                with self._lock:
+                    self.status = "error"
+                    self.error = str(exc)
 
         threading.Thread(target=_worker, daemon=True).start()
 
@@ -93,8 +105,10 @@ def show_progress_or_result(task: BackgroundTask) -> bool:
     """
     if task.status == "running":
         st.progress(task.progress, text=task.message)
-        st.info("💡 Podés navegar a otra pestaña mientras se procesa. "
-                "Los resultados se guardarán automáticamente.")
+        st.info(
+            "💡 Podés navegar a otra pestaña mientras se procesa. "
+            "Los resultados se guardarán automáticamente."
+        )
         time.sleep(1)
         st.rerun()
         return False  # unreachable, for type checker

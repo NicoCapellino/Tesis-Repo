@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from typing import cast
 
 import structlog
 
@@ -67,4 +68,4 @@ def get_logger(name: str) -> structlog.stdlib.BoundLogger:
     Args:
         name: Logger name, typically ``__name__`` of the calling module.
     """
-    return structlog.get_logger(name)
+    return cast(structlog.stdlib.BoundLogger, structlog.get_logger(name))

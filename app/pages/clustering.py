@@ -26,6 +26,7 @@ from app.components.background import (
     needs_recompute,
     show_progress_or_result,
 )
+from app.components.display import dataframe, plotly_chart
 from app.components.filters import get_filtered_data
 from config.settings import CITY_CONFIGS, DEFAULT_CITY
 
@@ -82,8 +83,7 @@ def _fit_kmeans_bg(
         km_e = KMeans(n_clusters=ki, random_state=42, n_init=10)
         km_e.fit(data)
         elbow_rows.append({"k": ki, "inercia": float(km_e.inertia_)})
-        task.update(0.40 + 0.55 * (ki - 1) / (k_max - 1),
-                    f"Elbow Chart: k={ki}/{k_max}...")
+        task.update(0.40 + 0.55 * (ki - 1) / (k_max - 1), f"Elbow Chart: k={ki}/{k_max}...")
 
     return {
         "labels": labels,
@@ -113,10 +113,7 @@ geo_df = geo_df.with_columns(pl.Series("cluster", labels.tolist()))
 
 # ── Métricas ─────────────────────────────────────────────────────────────────
 cluster_counts = (
-    geo_df.group_by("cluster")
-    .len()
-    .sort("len", descending=True)
-    .rename({"len": "crimenes"})
+    geo_df.group_by("cluster").len().sort("len", descending=True).rename({"len": "crimenes"})
 )
 
 c1, c2, c3 = st.columns(3)
@@ -134,10 +131,26 @@ st.subheader("Mapa de clusters geoespaciales")
 
 # Color palette for clusters (up to 20)
 COLORS = [
-    "#e6194b", "#3cb44b", "#ffe119", "#4363d8", "#f58231",
-    "#911eb4", "#42d4f4", "#f032e6", "#bfef45", "#fabed4",
-    "#469990", "#dcbeff", "#9A6324", "#fffac8", "#800000",
-    "#aaffc3", "#808000", "#ffd8b1", "#000075", "#a9a9a9",
+    "#e6194b",
+    "#3cb44b",
+    "#ffe119",
+    "#4363d8",
+    "#f58231",
+    "#911eb4",
+    "#42d4f4",
+    "#f032e6",
+    "#bfef45",
+    "#fabed4",
+    "#469990",
+    "#dcbeff",
+    "#9A6324",
+    "#fffac8",
+    "#800000",
+    "#aaffc3",
+    "#808000",
+    "#ffd8b1",
+    "#000075",
+    "#a9a9a9",
 ]
 
 m = folium.Map(location=list(center), zoom_start=11, tiles="CartoDB positron")
@@ -155,7 +168,7 @@ for cluster_id in range(k):
     cluster_group = MarkerCluster(name=f"Cluster {cluster_id}", show=True)
     lats = cluster_points["latitude"].to_list()
     lons = cluster_points["longitude"].to_list()
-    for lat, lon in zip(lats, lons):
+    for lat, lon in zip(lats, lons, strict=False):
         folium.CircleMarker(
             location=[lat, lon],
             radius=3,
@@ -224,24 +237,29 @@ fig_elbow.add_vline(
     line_color="red",
     annotation_text=f"k actual = {k}",
 )
-st.plotly_chart(fig_elbow, width="stretch")
+plotly_chart(fig_elbow)
 
 st.markdown("---")
 
 # ── Tabla de centros ──────────────────────────────────────────────────────────
 st.subheader("Centros de cluster y conteo de crímenes")
 
-centers_df = pl.DataFrame({
-    "cluster": list(range(k)),
-    "lat_centro": [float(c[1]) for c in centers],
-    "lon_centro": [float(c[0]) for c in centers],
-}).join(cluster_counts, on="cluster", how="left").sort("crimenes", descending=True)
+centers_df = (
+    pl.DataFrame(
+        {
+            "cluster": list(range(k)),
+            "lat_centro": [float(c[1]) for c in centers],
+            "lon_centro": [float(c[0]) for c in centers],
+        }
+    )
+    .join(cluster_counts, on="cluster", how="left")
+    .sort("crimenes", descending=True)
+)
 
-st.dataframe(
+dataframe(
     centers_df.with_columns(
         pl.col("lat_centro").round(5),
         pl.col("lon_centro").round(5),
     ).to_pandas(),
-    width="stretch",
     hide_index=True,
 )

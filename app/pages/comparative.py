@@ -1,14 +1,8 @@
 """
-Comparative Analysis Page.
+Comparative Analysis Page V2.
 
-Cross-reference crime data with infrastructure data (police stations,
-transport stations) to discover spatial patterns and correlations.
-
-Visualizations:
-1. Crime-to-station ratio by borough
-2. Distance to nearest police station (sampled histogram)
-3. Crime density around transport stations (radius analysis)
-4. Interactive map: crime hotspots vs infrastructure overlay
+This page relates NYPD crimes to authoritative USGS V2 police, fire, and
+healthcare facilities.
 """
 
 from __future__ import annotations
@@ -21,308 +15,371 @@ import streamlit as st
 from folium.plugins import HeatMap
 from streamlit_folium import st_folium
 
-from app.components.distances import compute_nearest_distances, haversine_np
-from app.components.filters import (
-    get_filtered_data,
-    get_police_stations,
-    get_transport_stations,
-)
+from app.components.display import dataframe, plotly_chart
+from app.components.distances import haversine_np
+from app.components.filters import get_filtered_data, get_usgs_police_v2, get_usgs_v2_layers
 from config.settings import CITY_CONFIGS, DEFAULT_CITY
 
-st.header("Análisis Comparativo: Crímenes vs. Infraestructura")
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _distance_matrix(
+    c_lats: tuple[float, ...],
+    c_lons: tuple[float, ...],
+    i_lats: tuple[float, ...],
+    i_lons: tuple[float, ...],
+) -> np.ndarray:
+    crimes_lat = np.array(c_lats)
+    crimes_lon = np.array(c_lons)
+    infra_lat = np.array(i_lats)
+    infra_lon = np.array(i_lons)
+    return haversine_np(
+        crimes_lat[:, None],
+        crimes_lon[:, None],
+        infra_lat[None, :],
+        infra_lon[None, :],
+    )
+
+
+def _facility_type(row: dict, fallback: str) -> str:
+    value = row.get("facility_type")
+    return str(value) if value else fallback
+
+
+def _safe_name(row: dict, idx: int, fallback: str) -> str:
+    value = row.get("name")
+    return str(value) if value else f"{fallback} {idx + 1}"
+
+
+st.header("Analisis Comparativo V2 - Crimenes vs. USGS")
+st.caption("V2 usa exclusivamente capas USGS: policia, bomberos y salud.")
 
 df = get_filtered_data()
-police_df = get_police_stations()
-transport_df = get_transport_stations()
-
+usgs_layers = get_usgs_v2_layers()
+usgs_police = get_usgs_police_v2()
 center = CITY_CONFIGS[DEFAULT_CITY].default_center
 
-# Check if infrastructure data is available
-has_police = police_df is not None and not police_df.is_empty()
-has_transport = transport_df is not None and not transport_df.is_empty()
-
-if not has_police and not has_transport:
+if not usgs_layers:
     st.warning(
-        "No hay datos de infraestructura disponibles. "
-        "Ejecutá el pipeline con datos de comisarías y transporte: "
-        "`docker-compose run --rm pipeline`"
+        "No hay capas USGS V2 cargadas. Ejecuta el pipeline de referencia USGS "
+        "antes de usar este analisis."
     )
     st.stop()
 
-
-# Distance helpers imported from app.components.distances
-
-
-# ── Prepare geo-filtered crime data ─────────────────────────────────────
 geo_df = df.filter(pl.col("latitude").is_not_null() & pl.col("longitude").is_not_null())
+if geo_df.is_empty():
+    st.warning("No hay crimenes con coordenadas validas para el analisis geoespacial.")
+    st.stop()
 
 
-# =========================================================================
-# 1. Crime-to-Station Ratio by Borough
-# =========================================================================
-st.subheader("Relación crímenes por comisaría, por borough")
+# ---------------------------------------------------------------------------
+# 1. USGS V2 inventory
+# ---------------------------------------------------------------------------
+st.subheader("Inventario USGS V2")
 
-if has_police:
-    # Assign each station to a borough using nearest-borough-center heuristic
-    # NYC boroughs approximate centers
-    BOROUGH_CENTERS = {
-        "MANHATTAN": (40.7831, -73.9712),
-        "BROOKLYN": (40.6782, -73.9442),
-        "QUEENS": (40.7282, -73.7949),
-        "BRONX": (40.8448, -73.8648),
-        "STATEN ISLAND": (40.5795, -74.1502),
-    }
-
-    # Assign each police station to nearest borough (cached)
-    @st.cache_data(ttl=3600)
-    def _assign_station_boroughs(
-        s_lats: tuple[float, ...], s_lons: tuple[float, ...],
-    ) -> list[str]:
-        boroughs: list[str] = []
-        for lat, lon in zip(s_lats, s_lons):
-            best_boro = min(
-                BOROUGH_CENTERS,
-                key=lambda b: haversine_np(
-                    np.array([lat]), np.array([lon]),
-                    np.array([BOROUGH_CENTERS[b][0]]), np.array([BOROUGH_CENTERS[b][1]]),
-                )[0],
-            )
-            boroughs.append(best_boro)
-        return boroughs
-
-    station_boroughs = _assign_station_boroughs(
-        tuple(police_df["lat"].to_list()),
-        tuple(police_df["lon"].to_list()),
+inventory_rows: list[dict] = []
+for label, layer_df in usgs_layers.items():
+    inventory_rows.append(
+        {
+            "capa_v2": label,
+            "instalaciones": len(layer_df),
+            "boroughs": layer_df["borough"].n_unique() if "borough" in layer_df.columns else None,
+            "tipos": (
+                layer_df["facility_type"].n_unique()
+                if "facility_type" in layer_df.columns
+                else None
+            ),
+        }
     )
 
-    stations_by_borough = (
-        pl.DataFrame({"borough": station_boroughs})
-        .group_by("borough")
+inventory_df = pl.DataFrame(inventory_rows)
+cols = st.columns(len(inventory_rows))
+for col, row in zip(cols, inventory_rows, strict=False):
+    with col:
+        st.metric(row["capa_v2"], f"{row['instalaciones']:,}")
+
+dataframe(inventory_df.to_pandas(), hide_index=True)
+
+facility_frames: list[pl.DataFrame] = []
+for label, layer_df in usgs_layers.items():
+    frame = layer_df.with_columns(pl.lit(label).alias("capa_v2"))
+    keep_cols = [c for c in ["capa_v2", "borough", "facility_type"] if c in frame.columns]
+    facility_frames.append(frame.select(keep_cols))
+
+if facility_frames:
+    by_borough = (
+        pl.concat(facility_frames, how="diagonal_relaxed")
+        .group_by("capa_v2", "borough")
         .len()
-        .rename({"len": "stations"})
+        .rename({"len": "instalaciones"})
+        .sort("capa_v2", "borough")
     )
+    fig_inventory = px.bar(
+        by_borough.to_pandas(),
+        x="borough",
+        y="instalaciones",
+        color="capa_v2",
+        barmode="group",
+        title="USGS V2: instalaciones por borough",
+        labels={"borough": "Borough", "instalaciones": "Instalaciones", "capa_v2": "Capa"},
+    )
+    plotly_chart(fig_inventory)
+
+
+# ---------------------------------------------------------------------------
+# 2. Crime-to-USGS-police ratio by borough
+# ---------------------------------------------------------------------------
+if usgs_police is not None and not usgs_police.is_empty() and "borough" in usgs_police.columns:
+    st.subheader("V2: crimenes por comisaria USGS, por borough")
 
     crimes_by_borough = (
         geo_df.filter(pl.col("borough").is_not_null())
         .group_by("borough")
         .len()
-        .rename({"len": "crimes"})
+        .rename({"len": "crimenes"})
     )
-
+    stations_by_borough = (
+        usgs_police.filter(pl.col("borough").is_not_null())
+        .group_by("borough")
+        .len()
+        .rename({"len": "comisarias_usgs_v2"})
+    )
     ratio_df = (
         crimes_by_borough.join(stations_by_borough, on="borough", how="left")
         .with_columns(
-            (pl.col("crimes") / pl.col("stations")).round(0).cast(pl.Int64).alias("crimes_per_station")
+            [
+                pl.col("comisarias_usgs_v2").fill_null(0),
+                pl.when(pl.col("comisarias_usgs_v2") > 0)
+                .then((pl.col("crimenes") / pl.col("comisarias_usgs_v2")).round(0))
+                .otherwise(None)
+                .cast(pl.Int64)
+                .alias("crimenes_por_comisaria_usgs_v2"),
+            ]
         )
-        .sort("crimes_per_station", descending=True)
+        .sort("crimenes_por_comisaria_usgs_v2", descending=True, nulls_last=True)
     )
 
-    col_chart, col_table = st.columns([2, 1])
-
-    with col_chart:
-        fig_ratio = px.bar(
-            ratio_df.to_pandas(),
-            x="borough",
-            y="crimes_per_station",
-            color="borough",
-            text="crimes_per_station",
-            labels={
-                "crimes_per_station": "Crímenes por comisaría",
-                "borough": "Borough",
-            },
-            title="Crímenes por comisaría de policía",
-        )
-        fig_ratio.update_traces(texttemplate="%{text:,}", textposition="outside")
-        fig_ratio.update_layout(showlegend=False)
-        st.plotly_chart(fig_ratio, width="stretch")
-
-    with col_table:
-        st.dataframe(
-            ratio_df.select("borough", "crimes", "stations", "crimes_per_station").to_pandas(),
-            width="stretch",
-            hide_index=True,
-        )
-else:
-    st.info("Datos de comisarías no disponibles.")
-
-
-# =========================================================================
-# 2. Distance to Nearest Police Station (histogram)
-# =========================================================================
-if has_police:
-    st.subheader("Distancia a la comisaría más cercana")
-
-    SAMPLE_SIZE = 20_000
-    sample_df = geo_df.sample(n=min(SAMPLE_SIZE, len(geo_df)), seed=42)
-
-    crime_lats = sample_df["latitude"].to_numpy()
-    crime_lons = sample_df["longitude"].to_numpy()
-    station_lats = police_df["lat"].to_numpy()
-    station_lons = police_df["lon"].to_numpy()
-
-    distances_m = compute_nearest_distances(
-        tuple(crime_lats.tolist()), tuple(crime_lons.tolist()),
-        tuple(station_lats.tolist()), tuple(station_lons.tolist()),
-    )
-    distances_km = distances_m / 1000
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Distancia media", f"{np.mean(distances_km):.2f} km")
-    with col2:
-        st.metric("Distancia mediana", f"{np.median(distances_km):.2f} km")
-    with col3:
-        pct_over_2km = (distances_km > 2).sum() / len(distances_km) * 100
-        st.metric("Crímenes a >2 km", f"{pct_over_2km:.1f}%")
-
-    fig_hist = px.histogram(
-        x=distances_km,
-        nbins=60,
-        labels={"x": "Distancia a comisaría más cercana (km)", "y": "Cantidad de crímenes"},
-        title=f"Distribución de distancia a comisaría más cercana (muestra de {len(sample_df):,})",
-    )
-    fig_hist.update_layout(bargap=0.05)
-    fig_hist.add_vline(
-        x=np.median(distances_km),
-        line_dash="dash",
-        line_color="red",
-        annotation_text=f"Mediana: {np.median(distances_km):.2f} km",
-    )
-    st.plotly_chart(fig_hist, width="stretch")
-
-
-# =========================================================================
-# 3. Crime Density Around Transport Stations
-# =========================================================================
-if has_transport:
-    st.subheader("Densidad de crímenes alrededor de estaciones de transporte")
-
-    radius_m = st.slider(
-        "Radio de análisis (metros)", min_value=100, max_value=2000, value=500, step=100
-    )
-
-    # Sample crimes for performance
-    TRANSPORT_SAMPLE = 30_000
-    transport_sample = geo_df.sample(n=min(TRANSPORT_SAMPLE, len(geo_df)), seed=42)
-    c_lats = transport_sample["latitude"].to_numpy()
-    c_lons = transport_sample["longitude"].to_numpy()
-    t_lats = transport_df["lat"].to_numpy()
-    t_lons = transport_df["lon"].to_numpy()
-
-    # Vectorized: compute all crime-to-station distances at once via broadcasting
-    # Shape: (n_crimes, n_stations)
-    dist_matrix = haversine_np(
-        c_lats[:, None], c_lons[:, None],
-        t_lats[None, :], t_lons[None, :],
-    )
-    crimes_counts = (dist_matrix <= radius_m).sum(axis=0)
-
-    crimes_per_station: list[dict] = []
-    for i in range(len(t_lats)):
-        crimes_per_station.append({
-            "name": transport_df["name"][i] if transport_df["name"][i] else f"Station {i}",
-            "transport_type": transport_df["transport_type"][i],
-            "lat": float(t_lats[i]),
-            "lon": float(t_lons[i]),
-            "crimes_nearby": int(crimes_counts[i]),
-        })
-
-    station_crime_df = pl.DataFrame(crimes_per_station)
-
-    # Stats by transport type
-    type_stats = (
-        station_crime_df.group_by("transport_type")
-        .agg(
-            pl.col("crimes_nearby").mean().round(1).alias("media_crimenes"),
-            pl.col("crimes_nearby").median().alias("mediana_crimenes"),
-            pl.col("crimes_nearby").max().alias("max_crimenes"),
-            pl.len().alias("cantidad_estaciones"),
-        )
-        .sort("media_crimenes", descending=True)
-    )
-
-    st.dataframe(type_stats.to_pandas(), width="stretch", hide_index=True)
-
-    # Top stations with most nearby crimes
-    top_stations = station_crime_df.sort("crimes_nearby", descending=True).head(20)
-
-    fig_top = px.bar(
-        top_stations.to_pandas(),
-        y="name",
-        x="crimes_nearby",
-        color="transport_type",
-        orientation="h",
+    fig_ratio = px.bar(
+        ratio_df.to_pandas(),
+        x="borough",
+        y="crimenes_por_comisaria_usgs_v2",
+        color="borough",
+        text="crimenes_por_comisaria_usgs_v2",
+        title="V2: crimenes por comisaria USGS",
         labels={
-            "crimes_nearby": f"Crímenes en radio de {radius_m}m",
-            "name": "Estación",
-            "transport_type": "Tipo",
+            "borough": "Borough",
+            "crimenes_por_comisaria_usgs_v2": "Crimenes por comisaria USGS",
         },
-        title=f"Top 20 estaciones de transporte con más crímenes en {radius_m}m",
     )
-    fig_top.update_layout(yaxis=dict(autorange="reversed"))
-    st.plotly_chart(fig_top, width="stretch")
+    fig_ratio.update_traces(texttemplate="%{text:,}", textposition="outside")
+    fig_ratio.update_layout(showlegend=False)
+    plotly_chart(fig_ratio)
+    dataframe(ratio_df.to_pandas(), hide_index=True)
 
 
-# =========================================================================
-# 4. Interactive Map: Crime Hotspots + Infrastructure
-# =========================================================================
-st.subheader("Mapa combinado: crímenes + infraestructura")
+# ---------------------------------------------------------------------------
+# 3. Facility exposure mining
+# ---------------------------------------------------------------------------
+st.subheader("V2: exposicion de crimenes alrededor de instalaciones USGS")
+
+radius_m = st.slider(
+    "Radio de analisis V2 (metros)",
+    min_value=100,
+    max_value=2500,
+    value=500,
+    step=100,
+)
+
+SAMPLE = 15_000
+sample = geo_df.sample(n=min(SAMPLE, len(geo_df)), seed=42)
+sample_lats = tuple(sample["latitude"].to_list())
+sample_lons = tuple(sample["longitude"].to_list())
+offense_values = np.array(sample["offense_description"].fill_null("SIN_TIPO").to_list())
+
+exposure_rows: list[dict] = []
+matrices: dict[str, np.ndarray] = {}
+for label, layer_df in usgs_layers.items():
+    matrix = _distance_matrix(
+        sample_lats,
+        sample_lons,
+        tuple(layer_df["lat"].to_list()),
+        tuple(layer_df["lon"].to_list()),
+    )
+    matrices[label] = matrix
+    counts = (matrix <= radius_m).sum(axis=0)
+
+    for idx, row in enumerate(layer_df.to_dicts()):
+        exposure_rows.append(
+            {
+                "capa_v2": label,
+                "facility_index": idx,
+                "name": _safe_name(row, idx, label),
+                "facility_type": _facility_type(row, label),
+                "borough": row.get("borough"),
+                "crimenes_en_radio": int(counts[idx]),
+            }
+        )
+
+exposure_df = pl.DataFrame(exposure_rows)
+summary_df = (
+    exposure_df.group_by("capa_v2")
+    .agg(
+        [
+            pl.len().alias("instalaciones"),
+            pl.col("crimenes_en_radio").mean().round(1).alias("media_crimenes_radio"),
+            pl.col("crimenes_en_radio").median().alias("mediana_crimenes_radio"),
+            pl.col("crimenes_en_radio").max().alias("max_crimenes_radio"),
+        ]
+    )
+    .sort("media_crimenes_radio", descending=True)
+)
+dataframe(summary_df.to_pandas(), hide_index=True)
+
+top_exposure = exposure_df.sort("crimenes_en_radio", descending=True).head(20)
+
+dominant_rows: list[dict] = []
+for row in top_exposure.to_dicts():
+    matrix = matrices[row["capa_v2"]]
+    mask = matrix[:, row["facility_index"]] <= radius_m
+    near_offenses = offense_values[mask]
+    if len(near_offenses) == 0:
+        dominant = "N/A"
+    else:
+        values, counts = np.unique(near_offenses, return_counts=True)
+        dominant = str(values[int(np.argmax(counts))])
+    dominant_rows.append({**row, "tipo_crimen_dominante": dominant})
+
+top_exposure_display = pl.DataFrame(dominant_rows)
+fig_top = px.bar(
+    top_exposure_display.to_pandas(),
+    y="name",
+    x="crimenes_en_radio",
+    color="capa_v2",
+    orientation="h",
+    hover_data=["facility_type", "borough", "tipo_crimen_dominante"],
+    title=f"V2: top 20 instalaciones USGS con mas crimenes en {radius_m}m",
+    labels={"name": "Instalacion", "crimenes_en_radio": "Crimenes en radio"},
+)
+fig_top.update_layout(yaxis=dict(autorange="reversed"))
+plotly_chart(fig_top)
+dataframe(top_exposure_display.drop("facility_index").to_pandas(), hide_index=True)
+
+
+# ---------------------------------------------------------------------------
+# 4. Nearest USGS layer per crime
+# ---------------------------------------------------------------------------
+st.subheader("V2: capa USGS mas cercana a cada crimen")
+
+nearest_rows: list[dict] = []
+for label, matrix in matrices.items():
+    nearest_rows.append(
+        {
+            "capa_v2": label,
+            "dist_m": matrix.min(axis=1),
+        }
+    )
+
+nearest_distances = np.vstack([row["dist_m"] for row in nearest_rows])
+nearest_idx = nearest_distances.argmin(axis=0)
+nearest_labels = [nearest_rows[i]["capa_v2"] for i in nearest_idx]
+nearest_min_km = nearest_distances.min(axis=0) / 1000
+
+nearest_df = pl.DataFrame(
+    {
+        "capa_v2_mas_cercana": nearest_labels,
+        "distancia_min_km": nearest_min_km,
+        "offense_level": sample["offense_level"].to_list(),
+        "offense_description": sample["offense_description"].to_list(),
+    }
+)
+
+nearest_counts = (
+    nearest_df.group_by("capa_v2_mas_cercana")
+    .len()
+    .rename({"len": "crimenes"})
+    .sort("crimenes", descending=True)
+)
+fig_nearest = px.bar(
+    nearest_counts.to_pandas(),
+    x="capa_v2_mas_cercana",
+    y="crimenes",
+    color="capa_v2_mas_cercana",
+    text="crimenes",
+    title="V2: infraestructura USGS mas cercana al crimen",
+    labels={"capa_v2_mas_cercana": "Capa USGS V2", "crimenes": "Crimenes"},
+)
+fig_nearest.update_traces(texttemplate="%{text:,}", textposition="outside")
+fig_nearest.update_layout(showlegend=False)
+plotly_chart(fig_nearest)
+
+severity_nearest = (
+    nearest_df.filter(pl.col("offense_level").is_not_null())
+    .group_by("capa_v2_mas_cercana", "offense_level")
+    .len()
+    .rename({"len": "crimenes"})
+)
+fig_severity = px.bar(
+    severity_nearest.to_pandas(),
+    x="capa_v2_mas_cercana",
+    y="crimenes",
+    color="offense_level",
+    barmode="group",
+    title="V2: nivel de ofensa segun capa USGS mas cercana",
+    labels={
+        "capa_v2_mas_cercana": "Capa USGS V2",
+        "crimenes": "Crimenes",
+        "offense_level": "Nivel",
+    },
+)
+plotly_chart(fig_severity)
+
+
+# ---------------------------------------------------------------------------
+# 5. Interactive map
+# ---------------------------------------------------------------------------
+st.subheader("Mapa V2: crimenes + infraestructura USGS")
 
 MAP_SAMPLE = 15_000
 map_df = geo_df.sample(n=min(MAP_SAMPLE, len(geo_df)), seed=42)
 heat_data = map_df.select("latitude", "longitude").to_numpy().tolist()
 
 m = folium.Map(location=list(center), zoom_start=11, tiles="CartoDB positron")
-
-# Crime heatmap layer
-heat_group = folium.FeatureGroup(name="Densidad de crímenes", show=True)
+heat_group = folium.FeatureGroup(name="Densidad de crimenes", show=True)
 HeatMap(heat_data, radius=8, blur=10, max_zoom=13).add_to(heat_group)
 heat_group.add_to(m)
 
-# Police stations layer
-if has_police:
-    police_group = folium.FeatureGroup(name="Comisarías", show=True)
-    for row in police_df.iter_rows(named=True):
+layer_styles = {
+    "USGS V2 - Policia": ("blue", 6),
+    "USGS V2 - Bomberos": ("orange", 5),
+    "USGS V2 - Salud": ("red", 5),
+}
+for label, layer_df in usgs_layers.items():
+    color, marker_radius = layer_styles.get(label, ("gray", 4))
+    group = folium.FeatureGroup(name=label, show=label == "USGS V2 - Policia")
+    for row in layer_df.drop_nulls(subset=["lat", "lon"]).to_dicts():
         folium.CircleMarker(
             location=[row["lat"], row["lon"]],
-            radius=6,
-            color="blue",
-            fill=True,
-            fill_color="blue",
-            fill_opacity=0.8,
-            popup=f"<b>Comisaría:</b> {row.get('name', 'N/A')}",
-        ).add_to(police_group)
-    police_group.add_to(m)
-
-# Transport stations layer (only named ones to avoid clutter)
-if has_transport:
-    transport_group = folium.FeatureGroup(name="Transporte público", show=False)
-    named_transport = transport_df.filter(pl.col("name") != "").head(500)
-    for row in named_transport.iter_rows(named=True):
-        color = {
-            "train_station": "green",
-            "subway_entrance": "orange",
-            "bus_station": "purple",
-        }.get(row.get("transport_type", ""), "gray")
-
-        folium.CircleMarker(
-            location=[row["lat"], row["lon"]],
-            radius=4,
+            radius=marker_radius,
             color=color,
             fill=True,
             fill_color=color,
-            fill_opacity=0.7,
-            popup=f"<b>{row.get('name', 'N/A')}</b><br>Tipo: {row.get('transport_type', 'N/A')}",
-        ).add_to(transport_group)
-    transport_group.add_to(m)
+            fill_opacity=0.85,
+            popup=(
+                f"<b>{row.get('name', 'N/A')}</b><br>"
+                f"{label}<br>"
+                f"{row.get('facility_type', '')}<br>"
+                f"{row.get('address', '')} {row.get('zipcode', '')}"
+            ),
+        ).add_to(group)
+    group.add_to(m)
 
 folium.LayerControl(collapsed=False).add_to(m)
-st_folium(m, width=None, height=650, key="comparative_map")
+st_folium(m, width=None, height=650, key="comparative_map_v2")
 
-# =========================================================================
-# 5. Crime by Offense Level per Borough
-# =========================================================================
-st.subheader("Distribución de nivel de ofensa por borough")
+
+# ---------------------------------------------------------------------------
+# 6. Crime by offense level per borough
+# ---------------------------------------------------------------------------
+st.subheader("Distribucion de nivel de ofensa por borough")
 
 borough_level = (
     df.filter(pl.col("borough").is_not_null() & pl.col("offense_level").is_not_null())
@@ -338,6 +395,6 @@ fig_stacked = px.bar(
     color="offense_level",
     barmode="group",
     labels={"len": "Cantidad", "borough": "Borough", "offense_level": "Nivel"},
-    title="Crímenes por borough y nivel de ofensa",
+    title="Crimenes por borough y nivel de ofensa",
 )
-st.plotly_chart(fig_stacked, width="stretch")
+plotly_chart(fig_stacked)

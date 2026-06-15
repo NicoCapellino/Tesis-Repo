@@ -7,6 +7,7 @@ without hitting the real API (uses mocked responses).
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import polars as pl
@@ -14,6 +15,7 @@ import pytest
 
 from config.settings import NYPD_DATASETS, PipelineSettings
 from src.extract.nypd_complaints import NYPDComplaintsExtractor
+from src.extract.usgs_structures import USGSStructuresExtractor
 
 
 @pytest.fixture
@@ -40,12 +42,8 @@ class TestNYPDComplaintsExtractor:
     def test_pagination_stops_on_partial_page(self, extractor: NYPDComplaintsExtractor) -> None:
         """Extractor should stop when a page returns fewer rows than $limit."""
         # Simulate: first page returns 100 rows (full), second returns 50 (partial = last)
-        page1_csv = "cmplnt_num,boro_nm\n" + "\n".join(
-            f"{i},MANHATTAN" for i in range(100)
-        )
-        page2_csv = "cmplnt_num,boro_nm\n" + "\n".join(
-            f"{i + 100},BROOKLYN" for i in range(50)
-        )
+        page1_csv = "cmplnt_num,boro_nm\n" + "\n".join(f"{i},MANHATTAN" for i in range(100))
+        page2_csv = "cmplnt_num,boro_nm\n" + "\n".join(f"{i + 100},BROOKLYN" for i in range(50))
 
         mock_responses = [
             MagicMock(status_code=200, text=page1_csv),
@@ -99,3 +97,172 @@ class TestNYPDComplaintsExtractor:
 
         # Same 2 records from 2 datasets → should be deduplicated to 2
         assert len(result) == 2
+
+
+class TestUSGSStructuresExtractor:
+    """Tests for USGS WFS parsing and NYC filtering."""
+
+    def test_filter_nyc_includes_queens_111_zip_prefix(self) -> None:
+        """ZIP prefix 111 should be retained and mapped to Queens."""
+        df = pl.DataFrame(
+            {
+                "NAME": ["LIC Station", "Manhattan Facility", "Long Island Facility"],
+                "FType": ["740", "800", "800"],
+                "FCode": ["74034", "80010", "80010"],
+                "ADDRESS": ["1 Court Sq", "1 Main St", "1 Other St"],
+                "CITY": ["Long Island City", "New York", "Mineola"],
+                "STATE": ["NY", "NY", "NY"],
+                "ZIPCODE": ["11101", "10001", "11501"],
+                "LOADDATE": ["2026-01-01", "2026-01-01", "2026-01-01"],
+                "lat": [40.746, 40.75, 40.74],
+                "lon": [-73.944, -73.99, -73.64],
+            }
+        )
+
+        result = USGSStructuresExtractor._filter_nyc(df)
+
+        assert result["ZIPCODE"].to_list() == ["11101", "10001"]
+        assert result["borough"].to_list() == ["QUEENS", "MANHATTAN"]
+
+    def test_fetch_ny_parses_gml_geometry_and_drops_missing_geometry(self) -> None:
+        """WFS parser should use USGS geometry and omit records without coordinates."""
+        xml = """<?xml version="1.0"?>
+<wfs:FeatureCollection xmlns:wfs="http://www.opengis.net/wfs/2.0"
+                       xmlns:gml="http://www.opengis.net/gml/3.2"
+                       xmlns:structures="https://example.com/structures"
+                       numberMatched="2" numberReturned="2">
+  <wfs:member>
+    <structures:USGS_TNM_Structures>
+      <structures:NAME>Valid Police Station</structures:NAME>
+      <structures:FType>740</structures:FType>
+      <structures:FCode>74034</structures:FCode>
+      <structures:ADDRESS>1 Main St</structures:ADDRESS>
+      <structures:CITY>New York</structures:CITY>
+      <structures:STATE>NY</structures:STATE>
+      <structures:ZIPCODE>10001</structures:ZIPCODE>
+      <structures:LOADDATE>2026-01-01</structures:LOADDATE>
+      <gml:Point><gml:pos>40.7501 -73.9901</gml:pos></gml:Point>
+    </structures:USGS_TNM_Structures>
+  </wfs:member>
+  <wfs:member>
+    <structures:USGS_TNM_Structures>
+      <structures:NAME>Missing Geometry</structures:NAME>
+      <structures:FType>740</structures:FType>
+      <structures:FCode>74034</structures:FCode>
+      <structures:ADDRESS>2 Main St</structures:ADDRESS>
+      <structures:CITY>New York</structures:CITY>
+      <structures:STATE>NY</structures:STATE>
+      <structures:ZIPCODE>10002</structures:ZIPCODE>
+      <structures:LOADDATE>2026-01-01</structures:LOADDATE>
+    </structures:USGS_TNM_Structures>
+  </wfs:member>
+</wfs:FeatureCollection>"""
+
+        response = MagicMock(text=xml)
+        extractor = USGSStructuresExtractor()
+
+        with patch.object(extractor, "_post_wfs", return_value=response):
+            result = extractor._fetch_ny(ftype=740)
+
+        assert len(result) == 1
+        assert result["NAME"].to_list() == ["Valid Police Station"]
+        assert result["lat"].to_list()[0] == pytest.approx(40.7501)
+        assert result["lon"].to_list()[0] == pytest.approx(-73.9901)
+
+    def test_extract_law_enforcement_filters_to_police_fcode(self) -> None:
+        """Law enforcement extraction should keep only police station FCodes."""
+        raw = pl.DataFrame(
+            {
+                "NAME": ["Police", "Fire"],
+                "FType": ["740", "740"],
+                "FCode": ["74034", "74026"],
+                "ADDRESS": ["1 Main", "2 Main"],
+                "CITY": ["New York", "New York"],
+                "STATE": ["NY", "NY"],
+                "ZIPCODE": ["10001", "10002"],
+                "LOADDATE": ["2026-01-01", "2026-01-01"],
+                "lat": [40.75, 40.76],
+                "lon": [-73.99, -73.98],
+            }
+        )
+        extractor = USGSStructuresExtractor()
+
+        with patch.object(extractor, "_fetch_ny", return_value=raw):
+            result = extractor.extract_law_enforcement("new_york")
+
+        assert len(result) == 1
+        assert result["name"].to_list() == ["Police"]
+        assert result["facility_type"].to_list() == ["Police Station"]
+
+    def test_extract_and_save_all_writes_three_parquet_files(self, tmp_path: Path) -> None:
+        """extract_and_save_all should produce healthcare, police, fire parquets."""
+        extractor = USGSStructuresExtractor()
+
+        raw_800 = pl.DataFrame(
+            {
+                "NAME": ["Hospital X"],
+                "FType": ["800"],
+                "FCode": ["80010"],
+                "ADDRESS": ["1 Main"],
+                "CITY": ["New York"],
+                "STATE": ["NY"],
+                "ZIPCODE": ["10001"],
+                "LOADDATE": ["2026-01-01"],
+                "lat": [40.75],
+                "lon": [-73.99],
+            }
+        )
+        raw_740 = pl.DataFrame(
+            {
+                "NAME": ["Police Y", "Fire Z"],
+                "FType": ["740", "740"],
+                "FCode": ["74034", "74026"],
+                "ADDRESS": ["2 Main", "3 Main"],
+                "CITY": ["New York", "New York"],
+                "STATE": ["NY", "NY"],
+                "ZIPCODE": ["10001", "10002"],
+                "LOADDATE": ["2026-01-01", "2026-01-01"],
+                "lat": [40.75, 40.76],
+                "lon": [-73.99, -73.98],
+            }
+        )
+
+        def mock_fetch(ftype: int) -> pl.DataFrame:
+            return raw_800 if ftype == 800 else raw_740
+
+        with patch.object(extractor, "_fetch_ny", side_effect=mock_fetch):
+            result = extractor.extract_and_save_all("new_york", output_dir=tmp_path)
+
+        assert "healthcare" in result
+        assert "usgs_police" in result
+        assert "usgs_fire" in result
+        assert (tmp_path / "healthcare.parquet").exists()
+        assert (tmp_path / "usgs_police.parquet").exists()
+        assert (tmp_path / "usgs_fire.parquet").exists()
+
+    def test_fetch_ny_handles_empty_feature_collection(self) -> None:
+        """An empty WFS response should return an empty DataFrame, not crash."""
+        xml = """<?xml version="1.0"?>
+        <wfs:FeatureCollection xmlns:wfs="http://www.opengis.net/wfs/2.0"
+                               numberMatched="0" numberReturned="0">
+        </wfs:FeatureCollection>"""
+        response = MagicMock(text=xml)
+        extractor = USGSStructuresExtractor()
+
+        with patch.object(extractor, "_post_wfs", return_value=response):
+            result = extractor._fetch_ny(ftype=800)
+
+        assert len(result) == 0
+
+    def test_filter_nyc_handles_null_zipcode(self) -> None:
+        """Records with null ZIPCODE should be filtered out silently."""
+        df = pl.DataFrame(
+            {
+                "NAME": ["Good", "Bad"],
+                "ZIPCODE": ["10001", None],
+                "lat": [40.75, 40.76],
+                "lon": [-73.99, -73.98],
+            }
+        )
+        result = USGSStructuresExtractor._filter_nyc(df)
+        assert len(result) == 1

@@ -1,5 +1,5 @@
 """
-Overview / Home page — KPI summary of the filtered dataset.
+Overview / Home page - KPI summary of the filtered dataset.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from app.components.filters import get_filtered_data
 
 df = get_filtered_data()
 
-st.title("NYC Crime Analysis Dashboard")
+st.title("NYC Crime Analysis Dashboard V2")
 st.markdown("---")
 
 col1, col2, col3, col4 = st.columns(4)
@@ -34,22 +34,24 @@ with col4:
 st.markdown("---")
 st.markdown(
     """
-    Usá el menú lateral para navegar entre las secciones:
+    Usa el menu lateral para navegar entre las secciones:
 
-    **Estadísticas Descriptivas** — Análisis puramente basado en distribuciones y conteos:
-    - **Temporal**: Evolución mensual, patrones por día/hora, comparativa anual.
-    - **Geoespacial**: Mapa de calor interactivo, densidad por borough.
-    - **Demográfico**: Perfil de víctimas y sospechosos, tipos de premisa.
+    **Estadisticas Descriptivas** - Analisis basado en distribuciones y conteos:
+    - **Temporal**: Evolucion mensual, patrones por dia/hora, comparativa anual.
+    - **Geoespacial V2**: Mapa de calor interactivo con capas USGS V2.
+    - **Demografico**: Perfil de victimas y sospechosos, tipos de premisa.
 
-    **Análisis Avanzado** — Cruce de datos e inteligencia artificial:
-    - **Comparativo**: Ratio crímenes/comisarías, densidad alrededor del transporte.
-    - **Proximidad**: Boxplots de crímenes cerca vs. lejos de comisarías.
+    **Analisis Avanzado V2** - Cruce de datos e inteligencia artificial con infraestructura USGS:
+    - **Comparativo**: Ratio crimenes/comisarias USGS, exposicion por instalaciones
+      y capa USGS mas cercana.
+    - **Proximidad**: Boxplots y tablas cruzadas de crimenes cerca vs. lejos de
+      policia, bomberos y salud USGS.
     - **Clustering K-Means**: Zonas de alta criminalidad identificadas por ML.
-    - **Reglas de Asociación**: Patrones entre tipo de delito y proximidad a infraestructura.
-    - **Predicción ML**: Random Forest y Gradient Boosting con validación cruzada.
-    - **Anomalías**: Isolation Forest para detectar días con actividad criminal inusual.
+    - **Reglas de Asociacion**: Patrones entre tipo de delito y proximidad a capas USGS V2.
+    - **Prediccion ML**: Random Forest y Gradient Boosting con features de distancia USGS V2.
+    - **Anomalias**: Isolation Forest para detectar dias con actividad criminal inusual.
 
     ---
-    *Fuente: NYC Open Data — NYPD Complaint Data (2020-2025)*
+    *Fuente: NYC Open Data - NYPD Complaint Data (2020-2025) + USGS National Map Structures V2*
     """
 )

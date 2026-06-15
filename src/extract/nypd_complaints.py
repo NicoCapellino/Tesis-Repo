@@ -134,10 +134,7 @@ class NYPDComplaintsExtractor:
         # Ensure we have a year column for partitioning
         if "cmplnt_fr_dt" in df.columns:
             df = df.with_columns(
-                pl.col("cmplnt_fr_dt")
-                .str.slice(0, 4)
-                .cast(pl.Int32, strict=False)
-                .alias("_year")
+                pl.col("cmplnt_fr_dt").str.slice(0, 4).cast(pl.Int32, strict=False).alias("_year")
             )
         else:
             log.warning("no_date_column_for_partitioning")

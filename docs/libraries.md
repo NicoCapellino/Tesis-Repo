@@ -12,7 +12,7 @@
 
 | Librería | Versión mínima | Uso |
 |---|---|---|
-| **httpx** | 0.27.0 | Cliente HTTP asíncrono/síncrono para Socrata API y Overpass API. Soporte nativo para timeouts y redirects. |
+| **httpx** | 0.27.0 | Cliente HTTP asíncrono/síncrono para Socrata API y USGS WFS. Soporte nativo para timeouts y redirects. |
 | **tenacity** | 8.2.0 | Retry con backoff exponencial para requests fallidos. Decorador `@retry` en `_fetch_page`. |
 
 ## Visualización y Dashboard
@@ -21,7 +21,7 @@
 |---|---|---|
 | **streamlit** | 1.36.0 | Framework del dashboard multi-página. Maneja estado global, navegación, sidebar y caching. |
 | **plotly** | 5.20.0 | Gráficos interactivos: barras, líneas, scatter, mapas de calor (confusion matrix), histogramas, elbow chart. |
-| **folium** | 0.16.0 | Mapas interactivos con tiles OpenStreetMap. Usado en clustering (MarkerCluster) y geoespacial. |
+| **folium** | 0.16.0 | Mapas interactivos. Usado en clustering (MarkerCluster), geoespacial y capas USGS V2. |
 | **streamlit-folium** | 0.20.0 | Integración de mapas Folium dentro de Streamlit via `st_folium`. |
 | **pydeck** | 0.9.0 | Mapas de alta performance con WebGL para visualización geoespacial de grandes volúmenes. |
 

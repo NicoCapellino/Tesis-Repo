@@ -8,11 +8,9 @@ The architecture supports adding new cities by extending the CITY_CONFIGS dictio
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from pydantic import Field
 from pydantic_settings import BaseSettings
-
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -48,7 +46,7 @@ class SocrataDataset:
         return f"{self.base_url}/{self.resource_id}.csv"
 
 
-# Datasets we consume – adding a new one is a single line.
+# Datasets we consume - adding a new one is a single line.
 NYPD_DATASETS: dict[str, SocrataDataset] = {
     "historic": SocrataDataset(
         resource_id="qgea-i56i",
@@ -62,17 +60,7 @@ NYPD_DATASETS: dict[str, SocrataDataset] = {
 
 
 # ---------------------------------------------------------------------------
-# Overpass API (OpenStreetMap)
-# ---------------------------------------------------------------------------
-OVERPASS_URLS: list[str] = [
-    "https://overpass-api.de/api/interpreter",
-    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter",
-]
-
-
-# ---------------------------------------------------------------------------
-# City configurations – extensible for future cities
+# City configurations - extensible for future cities
 # ---------------------------------------------------------------------------
 class CityConfig:
     """Geographical and dataset configuration for a city."""
@@ -140,8 +128,5 @@ class PipelineSettings(BaseSettings):
     # Year range for extraction
     start_year: int = Field(default=2020, description="First year to extract.")
     end_year: int = Field(default=2025, description="Last year to extract (inclusive).")
-
-    # Overpass
-    overpass_timeout: int = Field(default=120, description="Overpass API timeout in seconds.")
 
     model_config = {"env_prefix": "NYC_PIPELINE_"}

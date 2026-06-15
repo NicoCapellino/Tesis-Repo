@@ -2,7 +2,7 @@
 Geospatial validation and utility functions.
 
 Provides coordinate validation (filtering rows outside NYC bounding box)
-and distance-based enrichment (nearest police station, nearest transport).
+and distance-based enrichment helpers for nearest infrastructure facilities.
 """
 
 from __future__ import annotations
@@ -73,7 +73,10 @@ class GeospatialValidator:
 
     @staticmethod
     def haversine_distance(
-        lat1: float, lon1: float, lat2: float, lon2: float,
+        lat1: float,
+        lon1: float,
+        lat2: float,
+        lon2: float,
     ) -> float:
         """Calculate the Haversine distance between two points in meters.
 
@@ -89,10 +92,7 @@ class GeospatialValidator:
         dphi = math.radians(lat2 - lat1)
         dlambda = math.radians(lon2 - lon1)
 
-        a = (
-            math.sin(dphi / 2) ** 2
-            + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
-        )
+        a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
         return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
     def add_nearest_station(
@@ -130,7 +130,7 @@ class GeospatialValidator:
         # We add a temporary index to crimes for the join-back
         crimes_indexed = crimes_df.with_row_index("_crime_idx")
 
-        # Cross join: every crime × every station
+        # Cross join: every crime x every station
         cross = crimes_indexed.select("_crime_idx", "latitude", "longitude").join(
             stations_df.select("name", pl.col("lat").alias("s_lat"), pl.col("lon").alias("s_lon")),
             how="cross",
@@ -163,9 +163,7 @@ class GeospatialValidator:
             .select(
                 "_crime_idx",
                 pl.col("name").alias(f"nearest_{station_type}_name"),
-                pl.col("_distance_m")
-                .round(1)
-                .alias(f"nearest_{station_type}_distance_m"),
+                pl.col("_distance_m").round(1).alias(f"nearest_{station_type}_distance_m"),
             )
         )
 

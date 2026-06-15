@@ -21,21 +21,38 @@ def get_filtered_data() -> pl.DataFrame:
         if "complaints" not in st.session_state:
             # Data not loaded yet — force main.py to run again
             st.rerun()
-        st.error(
-            "No hay datos filtrados. Seleccioná filtros en la barra lateral."
-        )
+        st.error("No hay datos filtrados. Seleccioná filtros en la barra lateral.")
         st.stop()
     return st.session_state["filtered"]
 
 
-def get_police_stations() -> pl.DataFrame | None:
-    """Return police station data from session state."""
-    return st.session_state.get("police_stations")
+def get_usgs_healthcare_v2() -> pl.DataFrame | None:
+    """Return USGS V2 healthcare facility data from session state."""
+    return st.session_state.get("usgs_healthcare_v2")
 
 
-def get_transport_stations() -> pl.DataFrame | None:
-    """Return transport station data from session state."""
-    return st.session_state.get("transport_stations")
+def get_usgs_police_v2() -> pl.DataFrame | None:
+    """Return USGS V2 police station data (FCode 74034) from session state."""
+    return st.session_state.get("usgs_police_v2")
+
+
+def get_usgs_fire_v2() -> pl.DataFrame | None:
+    """Return USGS V2 fire station data (FCode 74026) from session state."""
+    return st.session_state.get("usgs_fire_v2")
+
+
+def get_usgs_v2_layers() -> dict[str, pl.DataFrame]:
+    """Return all loaded USGS V2 infrastructure layers.
+
+    Labels are intentionally prefixed with ``USGS V2`` so analysis pages make
+    the authoritative data source explicit.
+    """
+    candidates = {
+        "USGS V2 - Policia": get_usgs_police_v2(),
+        "USGS V2 - Bomberos": get_usgs_fire_v2(),
+        "USGS V2 - Salud": get_usgs_healthcare_v2(),
+    }
+    return {label: df for label, df in candidates.items() if df is not None and not df.is_empty()}
 
 
 def offense_type_filter(df: pl.DataFrame, *, key: str = "offense_filter") -> list[str]:

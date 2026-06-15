@@ -2,7 +2,7 @@
 ETL Pipeline Orchestrator.
 
 Coordinates the Extract → Transform → Load workflow:
-1. **Extract**: Download raw NYPD complaint data + OSM infrastructure.
+1. **Extract**: Download raw NYPD complaint data + USGS V2 infrastructure.
 2. **Transform**: Normalize, clean, derive temporal features.
 3. **Load**: Persist as compressed Parquet partitioned by year.
 
@@ -19,7 +19,7 @@ import polars as pl
 
 from config.settings import DEFAULT_CITY, PROCESSED_DIR, RAW_DIR, PipelineSettings
 from src.extract.nypd_complaints import NYPDComplaintsExtractor
-from src.extract.osm_infrastructure import OSMInfrastructureExtractor
+from src.extract.usgs_structures import USGSStructuresExtractor
 from src.transform.complaints import ComplaintsTransformer
 from src.transform.geospatial import GeospatialValidator
 from src.utils.logging import get_logger, setup_logging
@@ -32,7 +32,8 @@ def run_pipeline(
     settings: PipelineSettings | None = None,
     city: str = DEFAULT_CITY,
     skip_extract: bool = False,
-    skip_infrastructure: bool = False,
+    skip_complaints: bool = False,
+    skip_usgs: bool = False,
 ) -> dict[str, Path]:
     """Execute the full ETL pipeline.
 
@@ -41,7 +42,8 @@ def run_pipeline(
         city: City to process. Defaults to ``"new_york"``.
         skip_extract: If ``True``, skip the extraction phase and use existing
             raw files. Useful for re-running transforms without re-downloading.
-        skip_infrastructure: If ``True``, skip OSM infrastructure download.
+        skip_complaints: If ``True``, skip NYPD complaint download only.
+        skip_usgs: If ``True``, skip USGS structures download (healthcare + police + fire).
 
     Returns:
         Dictionary with paths to all output artifacts.
@@ -61,20 +63,24 @@ def run_pipeline(
     if not skip_extract:
         log.info("phase_extract_start")
 
-        # 1a. NYPD Complaints
-        with NYPDComplaintsExtractor(settings=settings) as extractor:
-            raw_path = extractor.extract_and_save(
-                years=range(settings.start_year, settings.end_year + 1),
-            )
+        # 1a. NYPD Complaints (skippable independently via --skip-complaints)
+        if not skip_complaints:
+            with NYPDComplaintsExtractor(settings=settings) as extractor:
+                raw_path = extractor.extract_and_save(
+                    years=range(settings.start_year, settings.end_year + 1),
+                )
             outputs["raw_complaints"] = raw_path
             log.info("phase_extract_complaints_done", path=str(raw_path))
+        else:
+            outputs["raw_complaints"] = RAW_DIR / "complaints"
+            log.info("phase_extract_complaints_skipped")
 
-        # 1b. OSM Infrastructure (police + transport)
-        if not skip_infrastructure:
-            osm_extractor = OSMInfrastructureExtractor(settings=settings)
-            infra_paths = osm_extractor.extract_and_save_all(city)
-            outputs.update({f"reference_{k}": v for k, v in infra_paths.items()})
-            log.info("phase_extract_infrastructure_done")
+        # 1b. USGS V2 Structures (healthcare + police + fire)
+        if not skip_usgs:
+            usgs_extractor = USGSStructuresExtractor(settings=settings)
+            usgs_paths = usgs_extractor.extract_and_save_all(city)
+            outputs.update({f"reference_{k}": v for k, v in usgs_paths.items()})
+            log.info("phase_extract_usgs_done")
     else:
         log.info("phase_extract_skipped")
         outputs["raw_complaints"] = RAW_DIR / "complaints"
@@ -125,16 +131,18 @@ def run_pipeline(
 def main() -> None:
     """CLI entry point."""
     setup_logging()
-    log.info("nyc_crime_pipeline_v1")
+    log.info("nyc_crime_pipeline_v2_usgs")
 
     # Parse simple CLI flags
     skip_extract = "--skip-extract" in sys.argv
-    skip_infra = "--skip-infrastructure" in sys.argv
+    skip_complaints = "--skip-complaints" in sys.argv
+    skip_usgs = "--skip-usgs" in sys.argv
 
     try:
         run_pipeline(
             skip_extract=skip_extract,
-            skip_infrastructure=skip_infra,
+            skip_complaints=skip_complaints,
+            skip_usgs=skip_usgs,
         )
     except KeyboardInterrupt:
         log.info("pipeline_interrupted")

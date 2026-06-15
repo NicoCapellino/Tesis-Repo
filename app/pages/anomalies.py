@@ -12,7 +12,6 @@ Visualizaciones:
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -26,6 +25,7 @@ from app.components.background import (
     needs_recompute,
     show_progress_or_result,
 )
+from app.components.display import dataframe, plotly_chart
 from app.components.filters import get_filtered_data
 
 st.header("Detección de Anomalías — Isolation Forest")
@@ -43,7 +43,10 @@ with st.expander("Parámetros del modelo", expanded=True):
     with col1:
         contamination = st.slider(
             "Tasa de contaminación",
-            min_value=0.01, max_value=0.15, value=0.05, step=0.01,
+            min_value=0.01,
+            max_value=0.15,
+            value=0.05,
+            step=0.01,
             format="%.2f",
             help="Proporción esperada de anomalías en los datos (0.05 = 5%).",
         )
@@ -58,13 +61,14 @@ with st.expander("Parámetros del modelo", expanded=True):
 # ── Preparar datos ───────────────────────────────────────────────────────────
 @st.cache_data(ttl=3600, show_spinner="Preparando datos temporales...")
 def _prepare_daily_counts(
+    filtered_df: pl.DataFrame,
     year_filter: tuple[int, ...],
     borough_filter: tuple[str, ...],
     level_filter: tuple[str, ...],
     by_borough: bool,
 ) -> pl.DataFrame | None:
     """Aggregate crime counts by date (optionally by borough)."""
-    base = st.session_state["filtered"]
+    base = filtered_df
 
     required = ["year", "month", "day_of_week"]
     if not all(c in base.columns for c in required):
@@ -111,15 +115,14 @@ def _prepare_daily_counts(
             .sort(group_cols)
         )
         # Create a synthetic date column
-        daily = daily.with_columns(
-            pl.date(pl.col("year"), pl.col("month"), 1).alias("date")
-        )
+        daily = daily.with_columns(pl.date(pl.col("year"), pl.col("month"), 1).alias("date"))
 
     return daily
 
 
 by_borough = granularity == "Por día y borough"
 daily_df = _prepare_daily_counts(
+    df,
     year_filter=tuple(sorted(df["year"].drop_nulls().unique().to_list())),
     borough_filter=tuple(sorted(df["borough"].drop_nulls().unique().to_list())),
     level_filter=tuple(sorted(df["offense_level"].drop_nulls().unique().to_list())),
@@ -149,7 +152,7 @@ def _detect_anomalies_bg(
     if "month" in pdf.columns:
         feature_cols.append("month")
 
-    X = pdf[feature_cols].fillna(0).values
+    features_matrix = pdf[feature_cols].fillna(0).values
 
     task.update(0.30, "Paso 2/3: Entrenando Isolation Forest...")
     iso = IsolationForest(
@@ -157,10 +160,10 @@ def _detect_anomalies_bg(
         random_state=42,
         n_jobs=-1,
     )
-    pdf["anomaly"] = iso.fit_predict(X)
+    pdf["anomaly"] = iso.fit_predict(features_matrix)
 
     task.update(0.70, "Paso 3/3: Calculando scores de anomalía...")
-    pdf["anomaly_score"] = iso.decision_function(X)
+    pdf["anomaly_score"] = iso.decision_function(features_matrix)
     pdf["is_anomaly"] = pdf["anomaly"] == -1
 
     return pdf
@@ -208,26 +211,30 @@ if "date" in result_df.columns:
 
     # Normal points
     normal = result_df[~result_df["is_anomaly"]]
-    fig_timeline.add_trace(go.Scatter(
-        x=normal["date"],
-        y=normal["crime_count"],
-        mode="lines",
-        name="Normal",
-        line=dict(color="#2196F3", width=1),
-        opacity=0.7,
-    ))
+    fig_timeline.add_trace(
+        go.Scatter(
+            x=normal["date"],
+            y=normal["crime_count"],
+            mode="lines",
+            name="Normal",
+            line=dict(color="#2196F3", width=1),
+            opacity=0.7,
+        )
+    )
 
     # Anomaly points
     anomalies = result_df[result_df["is_anomaly"]]
-    fig_timeline.add_trace(go.Scatter(
-        x=anomalies["date"],
-        y=anomalies["crime_count"],
-        mode="markers",
-        name="Anomalía",
-        marker=dict(color="red", size=8, symbol="x"),
-        text=anomalies.get("borough", ""),
-        hovertemplate="Fecha: %{x}<br>Crímenes: %{y}<br>%{text}<extra></extra>",
-    ))
+    fig_timeline.add_trace(
+        go.Scatter(
+            x=anomalies["date"],
+            y=anomalies["crime_count"],
+            mode="markers",
+            name="Anomalía",
+            marker=dict(color="red", size=8, symbol="x"),
+            text=anomalies.get("borough", ""),
+            hovertemplate="Fecha: %{x}<br>Crímenes: %{y}<br>%{text}<extra></extra>",
+        )
+    )
 
     # Mean reference line
     fig_timeline.add_hline(
@@ -243,7 +250,7 @@ if "date" in result_df.columns:
         yaxis_title="Cantidad de crímenes",
         hovermode="x unified",
     )
-    st.plotly_chart(fig_timeline, width="stretch")
+    plotly_chart(fig_timeline)
 
 # ── Tabla de top anomalías ───────────────────────────────────────────────────
 st.markdown("---")
@@ -254,11 +261,7 @@ st.caption(
     "uno muy bajo puede indicar un feriado o cierre."
 )
 
-top_anomalies = (
-    anomaly_rows
-    .sort_values("anomaly_score")
-    .head(20)
-)
+top_anomalies = anomaly_rows.sort_values("anomaly_score").head(20)
 
 display_cols = ["date", "crime_count", "anomaly_score"]
 if "borough" in top_anomalies.columns:
@@ -271,7 +274,7 @@ if not top_anomalies.empty:
     display_df["anomaly_score"] = display_df["anomaly_score"].round(4)
     if "date" in display_df.columns:
         display_df["date"] = display_df["date"].astype(str)
-    st.dataframe(display_df, width="stretch", hide_index=True)
+    dataframe(display_df, hide_index=True)
 else:
     st.info("No se detectaron anomalías con los parámetros actuales.")
 
@@ -281,8 +284,7 @@ if "borough" in result_df.columns and n_anomalies > 0:
     st.subheader("Distribución de anomalías por borough")
 
     borough_anomalies = (
-        anomaly_rows
-        .groupby("borough")
+        anomaly_rows.groupby("borough")
         .agg(
             total_anomalias=("is_anomaly", "sum"),
             media_crimenes=("crime_count", "mean"),
@@ -309,7 +311,7 @@ if "borough" in result_df.columns and n_anomalies > 0:
         color_continuous_scale="YlOrRd",
     )
     fig_borough.update_traces(textposition="outside")
-    st.plotly_chart(fig_borough, width="stretch")
+    plotly_chart(fig_borough)
 
 # ── Histograma de scores ────────────────────────────────────────────────────
 st.markdown("---")
@@ -330,4 +332,4 @@ fig_hist = px.histogram(
     barmode="overlay",
 )
 fig_hist.update_layout(bargap=0.05)
-st.plotly_chart(fig_hist, width="stretch")
+plotly_chart(fig_hist)
