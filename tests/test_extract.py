@@ -198,20 +198,34 @@ class TestUSGSStructuresExtractor:
         """extract_and_save_all should produce healthcare, police, fire parquets."""
         extractor = USGSStructuresExtractor()
 
-        raw_800 = pl.DataFrame({
-            "NAME": ["Hospital X"], "FType": ["800"], "FCode": ["80010"],
-            "ADDRESS": ["1 Main"], "CITY": ["New York"], "STATE": ["NY"],
-            "ZIPCODE": ["10001"], "LOADDATE": ["2026-01-01"],
-            "lat": [40.75], "lon": [-73.99],
-        })
-        raw_740 = pl.DataFrame({
-            "NAME": ["Police Y", "Fire Z"], "FType": ["740", "740"],
-            "FCode": ["74034", "74026"],
-            "ADDRESS": ["2 Main", "3 Main"], "CITY": ["New York", "New York"],
-            "STATE": ["NY", "NY"], "ZIPCODE": ["10001", "10002"],
-            "LOADDATE": ["2026-01-01", "2026-01-01"],
-            "lat": [40.75, 40.76], "lon": [-73.99, -73.98],
-        })
+        raw_800 = pl.DataFrame(
+            {
+                "NAME": ["Hospital X"],
+                "FType": ["800"],
+                "FCode": ["80010"],
+                "ADDRESS": ["1 Main"],
+                "CITY": ["New York"],
+                "STATE": ["NY"],
+                "ZIPCODE": ["10001"],
+                "LOADDATE": ["2026-01-01"],
+                "lat": [40.75],
+                "lon": [-73.99],
+            }
+        )
+        raw_740 = pl.DataFrame(
+            {
+                "NAME": ["Police Y", "Fire Z"],
+                "FType": ["740", "740"],
+                "FCode": ["74034", "74026"],
+                "ADDRESS": ["2 Main", "3 Main"],
+                "CITY": ["New York", "New York"],
+                "STATE": ["NY", "NY"],
+                "ZIPCODE": ["10001", "10002"],
+                "LOADDATE": ["2026-01-01", "2026-01-01"],
+                "lat": [40.75, 40.76],
+                "lon": [-73.99, -73.98],
+            }
+        )
 
         def mock_fetch(ftype: int) -> pl.DataFrame:
             return raw_800 if ftype == 800 else raw_740
@@ -242,11 +256,13 @@ class TestUSGSStructuresExtractor:
 
     def test_filter_nyc_handles_null_zipcode(self) -> None:
         """Records with null ZIPCODE should be filtered out silently."""
-        df = pl.DataFrame({
-            "NAME": ["Good", "Bad"],
-            "ZIPCODE": ["10001", None],
-            "lat": [40.75, 40.76],
-            "lon": [-73.99, -73.98],
-        })
+        df = pl.DataFrame(
+            {
+                "NAME": ["Good", "Bad"],
+                "ZIPCODE": ["10001", None],
+                "lat": [40.75, 40.76],
+                "lon": [-73.99, -73.98],
+            }
+        )
         result = USGSStructuresExtractor._filter_nyc(df)
         assert len(result) == 1

@@ -14,8 +14,6 @@ import polars as pl
 import streamlit as st
 from mlxtend.frequent_patterns import association_rules, fpgrowth
 
-from app.components.utils import slugify as _slug
-
 from app.components.background import (
     BackgroundTask,
     get_task,
@@ -25,6 +23,7 @@ from app.components.background import (
 from app.components.display import dataframe, plotly_chart
 from app.components.distances import haversine_np
 from app.components.filters import get_filtered_data, get_usgs_v2_layers
+from app.components.utils import slugify as _slug
 
 st.header("Reglas de Asociacion V2 - FP-Growth con USGS")
 st.markdown(
