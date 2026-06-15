@@ -7,6 +7,7 @@ without hitting the real API (uses mocked responses).
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import polars as pl
@@ -192,3 +193,60 @@ class TestUSGSStructuresExtractor:
         assert len(result) == 1
         assert result["name"].to_list() == ["Police"]
         assert result["facility_type"].to_list() == ["Police Station"]
+
+    def test_extract_and_save_all_writes_three_parquet_files(self, tmp_path: Path) -> None:
+        """extract_and_save_all should produce healthcare, police, fire parquets."""
+        extractor = USGSStructuresExtractor()
+
+        raw_800 = pl.DataFrame({
+            "NAME": ["Hospital X"], "FType": ["800"], "FCode": ["80010"],
+            "ADDRESS": ["1 Main"], "CITY": ["New York"], "STATE": ["NY"],
+            "ZIPCODE": ["10001"], "LOADDATE": ["2026-01-01"],
+            "lat": [40.75], "lon": [-73.99],
+        })
+        raw_740 = pl.DataFrame({
+            "NAME": ["Police Y", "Fire Z"], "FType": ["740", "740"],
+            "FCode": ["74034", "74026"],
+            "ADDRESS": ["2 Main", "3 Main"], "CITY": ["New York", "New York"],
+            "STATE": ["NY", "NY"], "ZIPCODE": ["10001", "10002"],
+            "LOADDATE": ["2026-01-01", "2026-01-01"],
+            "lat": [40.75, 40.76], "lon": [-73.99, -73.98],
+        })
+
+        def mock_fetch(ftype: int) -> pl.DataFrame:
+            return raw_800 if ftype == 800 else raw_740
+
+        with patch.object(extractor, "_fetch_ny", side_effect=mock_fetch):
+            result = extractor.extract_and_save_all("new_york", output_dir=tmp_path)
+
+        assert "healthcare" in result
+        assert "usgs_police" in result
+        assert "usgs_fire" in result
+        assert (tmp_path / "healthcare.parquet").exists()
+        assert (tmp_path / "usgs_police.parquet").exists()
+        assert (tmp_path / "usgs_fire.parquet").exists()
+
+    def test_fetch_ny_handles_empty_feature_collection(self) -> None:
+        """An empty WFS response should return an empty DataFrame, not crash."""
+        xml = """<?xml version="1.0"?>
+        <wfs:FeatureCollection xmlns:wfs="http://www.opengis.net/wfs/2.0"
+                               numberMatched="0" numberReturned="0">
+        </wfs:FeatureCollection>"""
+        response = MagicMock(text=xml)
+        extractor = USGSStructuresExtractor()
+
+        with patch.object(extractor, "_post_wfs", return_value=response):
+            result = extractor._fetch_ny(ftype=800)
+
+        assert len(result) == 0
+
+    def test_filter_nyc_handles_null_zipcode(self) -> None:
+        """Records with null ZIPCODE should be filtered out silently."""
+        df = pl.DataFrame({
+            "NAME": ["Good", "Bad"],
+            "ZIPCODE": ["10001", None],
+            "lat": [40.75, 40.76],
+            "lon": [-73.99, -73.98],
+        })
+        result = USGSStructuresExtractor._filter_nyc(df)
+        assert len(result) == 1

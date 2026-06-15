@@ -20,6 +20,8 @@ services:
     container_name: nyc-pipeline
     command: ["python", "-m", "src.pipeline"]
     volumes:
+      # Bind mount para desarrollo: los datos quedan en ./data del host.
+      # En produccion, considerar volver a named volumes para mejor I/O.
       - ./data:/app/data
     environment:
       - NYC_PIPELINE_PAGE_SIZE=50000
@@ -32,6 +34,8 @@ services:
     ports:
       - "8501:8501"
     volumes:
+      # Bind mount para desarrollo: los datos quedan en ./data del host.
+      # En produccion, considerar volver a named volumes para mejor I/O.
       - ./data:/app/data
     mem_limit: 8g
     healthcheck:

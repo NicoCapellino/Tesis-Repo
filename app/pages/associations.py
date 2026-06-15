@@ -7,15 +7,14 @@ USGS V2 police, fire, and healthcare facilities.
 
 from __future__ import annotations
 
-import gc
-import re
-
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import polars as pl
 import streamlit as st
 from mlxtend.frequent_patterns import association_rules, fpgrowth
+
+from app.components.utils import slugify as _slug
 
 from app.components.background import (
     BackgroundTask,
@@ -40,10 +39,6 @@ usgs_layers = get_usgs_v2_layers()
 if not usgs_layers:
     st.warning("No hay capas USGS V2 disponibles. Ejecuta el pipeline de referencia USGS.")
     st.stop()
-
-
-def _slug(label: str) -> str:
-    return re.sub(r"[^A-Z0-9]+", "_", label.upper()).strip("_")
 
 
 with st.expander("Parametros del algoritmo V2", expanded=True):
@@ -112,7 +107,6 @@ def _compute_associations_v2(
         for i, distance in enumerate(distances):
             transactions[i].append(near_item if distance < threshold_m else far_item)
         del distances
-        gc.collect()
 
     task.update(0.50, "Codificando transacciones V2...")
     all_items = sorted(set(item for transaction in transactions for item in transaction))
@@ -125,13 +119,11 @@ def _compute_associations_v2(
 
     df_onehot = pd.DataFrame(onehot, columns=all_items)
     del onehot, transactions
-    gc.collect()
 
     task.update(0.70, "Ejecutando FP-Growth V2...")
     itemsets = fpgrowth(df_onehot, min_support=support, use_colnames=True)
     num_transactions = len(df_onehot)
     del df_onehot
-    gc.collect()
 
     if itemsets.empty:
         return itemsets, pd.DataFrame()
