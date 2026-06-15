@@ -52,9 +52,7 @@ layer_styles = {
 for label, layer_df in usgs_layers.items():
     color, radius = layer_styles.get(label, ("gray", 4))
     layer_group = folium.FeatureGroup(name=label, show=label == "USGS V2 - Policia")
-    for row in layer_df.iter_rows(named=True):
-        if row.get("lat") is None or row.get("lon") is None:
-            continue
+    for row in layer_df.drop_nulls(subset=["lat", "lon"]).to_dicts():
         folium.CircleMarker(
             location=[row["lat"], row["lon"]],
             radius=radius,

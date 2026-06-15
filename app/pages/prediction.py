@@ -7,7 +7,7 @@ features.
 
 from __future__ import annotations
 
-import re
+from app.components.utils import slugify as _slug
 
 import numpy as np
 import pandas as pd
@@ -44,10 +44,6 @@ if not usgs_layers:
     st.stop()
 
 
-def _slug(label: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
-
-
 with st.expander("Parametros del modelo V2", expanded=True):
     col1, col2, col3, col4 = st.columns(4)
     with col1:
@@ -75,12 +71,12 @@ SAMPLE_N = 30_000
 
 @st.cache_data(ttl=3600, show_spinner="Preparando features USGS V2...")
 def _prepare_features(
+    base: pl.DataFrame,
     year_filter: tuple[int, ...],
     borough_filter: tuple[str, ...],
     level_filter: tuple[str, ...],
     layers_payload: tuple[tuple[str, tuple[float, ...], tuple[float, ...]], ...],
 ) -> pd.DataFrame | None:
-    base = st.session_state["filtered"]
 
     required_cols = [
         "hour",
@@ -126,6 +122,7 @@ layers_payload = tuple(
 )
 
 features_pdf = _prepare_features(
+    df,
     year_filter=tuple(sorted(df["year"].drop_nulls().unique().to_list())),
     borough_filter=tuple(sorted(df["borough"].drop_nulls().unique().to_list())),
     level_filter=tuple(sorted(df["offense_level"].drop_nulls().unique().to_list())),

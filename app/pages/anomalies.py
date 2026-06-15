@@ -61,13 +61,14 @@ with st.expander("Parámetros del modelo", expanded=True):
 # ── Preparar datos ───────────────────────────────────────────────────────────
 @st.cache_data(ttl=3600, show_spinner="Preparando datos temporales...")
 def _prepare_daily_counts(
+    filtered_df: pl.DataFrame,
     year_filter: tuple[int, ...],
     borough_filter: tuple[str, ...],
     level_filter: tuple[str, ...],
     by_borough: bool,
 ) -> pl.DataFrame | None:
     """Aggregate crime counts by date (optionally by borough)."""
-    base = st.session_state["filtered"]
+    base = filtered_df
 
     required = ["year", "month", "day_of_week"]
     if not all(c in base.columns for c in required):
@@ -121,6 +122,7 @@ def _prepare_daily_counts(
 
 by_borough = granularity == "Por día y borough"
 daily_df = _prepare_daily_counts(
+    df,
     year_filter=tuple(sorted(df["year"].drop_nulls().unique().to_list())),
     borough_filter=tuple(sorted(df["borough"].drop_nulls().unique().to_list())),
     level_filter=tuple(sorted(df["offense_level"].drop_nulls().unique().to_list())),

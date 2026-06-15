@@ -71,6 +71,9 @@ def run_pipeline(
                 )
             outputs["raw_complaints"] = raw_path
             log.info("phase_extract_complaints_done", path=str(raw_path))
+        else:
+            outputs["raw_complaints"] = RAW_DIR / "complaints"
+            log.info("phase_extract_complaints_skipped")
 
         # 1b. USGS V2 Structures (healthcare + police + fire)
         if not skip_usgs:

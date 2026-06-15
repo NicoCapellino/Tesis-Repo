@@ -19,6 +19,9 @@ Verified FCodes for NYC (from live WFS, May 2026):
 
 from __future__ import annotations
 
+# NOTA: Usamos xml.etree.ElementTree directamente porque la fuente (USGS)
+# es un servicio federal confiable. En un entorno de produccion, se deberia
+# usar defusedxml para prevenir ataques de entidad XML.
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -106,16 +109,43 @@ def _is_retryable_usgs_error(exc: BaseException) -> bool:
 class USGSStructuresExtractor:
     """Downloads infrastructure data from the USGS National Map WFS service.
 
-    Usage::
-
-        extractor = USGSStructuresExtractor()
-        healthcare_df = extractor.extract_healthcare("new_york")
-        law_df = extractor.extract_law_enforcement("new_york")
+    For extracting all datasets at once (recommended for the pipeline):
         extractor.extract_and_save_all("new_york")
+
+    For extracting datasets individuales (cada llamada hace un request WFS):
+        healthcare_df = extractor.extract_healthcare("new_york")
+        # NOTA: extract_law_enforcement y extract_fire_stations hacen
+        # requests WFS independientes. Para evitar duplicacion, usar
+        # extract_and_save_all() que optimiza con un solo request.
     """
 
     def __init__(self, settings: PipelineSettings | None = None) -> None:
         self.settings = settings or PipelineSettings()
+        self._client: httpx.Client | None = None
+        self._cache_740: pl.DataFrame | None = None
+
+    def _get_client(self) -> httpx.Client:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.Client(
+                timeout=httpx.Timeout(self.settings.request_timeout_seconds),
+            )
+        return self._client
+
+    def _fetch_740_cached(self, city: str) -> pl.DataFrame:
+        if self._cache_740 is None:
+            raw = self._fetch_ny(ftype=740)
+            self._cache_740 = self._filter_nyc(raw)
+        return self._cache_740
+
+    def close(self) -> None:
+        if self._client is not None and not self._client.is_closed:
+            self._client.close()
+
+    def __enter__(self) -> USGSStructuresExtractor:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        self.close()
 
     # ------------------------------------------------------------------
     # Public API
@@ -136,7 +166,7 @@ class USGSStructuresExtractor:
             .with_columns(
                 [
                     pl.col("FCode")
-                    .replace(HEALTHCARE_FCODE_MAP, default="Medical Facility")
+                    .replace_strict(HEALTHCARE_FCODE_MAP, default="Medical Facility")
                     .alias("facility_type"),
                     pl.col("FCode").alias("fcode"),
                 ]
@@ -154,8 +184,7 @@ class USGSStructuresExtractor:
         ``zipcode``, ``borough``, ``fcode``, ``loaddate``.
         """
         log.info("usgs_fetch_start", ftype=740, city=city)
-        raw = self._fetch_ny(ftype=740)
-        nyc = self._filter_nyc(raw)
+        nyc = self._fetch_740_cached(city)
         police = nyc.filter(pl.col("FCode").is_in(list(POLICE_FCODES)))
         df = (
             police.rename(RENAME_COLUMNS)
@@ -178,8 +207,7 @@ class USGSStructuresExtractor:
         ``zipcode``, ``borough``, ``fcode``, ``loaddate``.
         """
         log.info("usgs_fetch_start", ftype=740, subtype="fire", city=city)
-        raw = self._fetch_ny(ftype=740)
-        nyc = self._filter_nyc(raw)
+        nyc = self._fetch_740_cached(city)
         fire = nyc.filter(pl.col("FCode").is_in(list(FIRE_FCODES)))
         df = (
             fire.rename(RENAME_COLUMNS)
@@ -270,11 +298,28 @@ class USGSStructuresExtractor:
         resp = self._post_wfs(xml_body, ftype=ftype)
 
         root = ET.fromstring(resp.text)
+        matched = root.get("numberMatched")
+        returned = root.get("numberReturned")
         log.info(
             "usgs_wfs_response",
-            matched=root.get("numberMatched"),
-            returned=root.get("numberReturned"),
+            matched=matched,
+            returned=returned,
         )
+
+        if matched and returned and matched != "unknown":
+            try:
+                n_matched = int(matched)
+                n_returned = int(returned)
+                if n_matched > n_returned:
+                    log.warning(
+                        "usgs_wfs_truncated",
+                        ftype=ftype,
+                        matched=n_matched,
+                        returned=n_returned,
+                        message=f"Se perdieron {n_matched - n_returned} registros. Considerar implementar paginacion WFS.",
+                    )
+            except ValueError:
+                pass
 
         rows: list[dict[str, object]] = []
         for member in root.iter(f"{{{WFS_NS}}}member"):
@@ -328,18 +373,18 @@ class USGSStructuresExtractor:
     )
     def _post_wfs(self, xml_body: bytes, *, ftype: int) -> httpx.Response:
         """POST the WFS request with retries for transient transport/5xx failures."""
-        with httpx.Client(timeout=self.settings.request_timeout_seconds) as client:
-            resp = client.post(
-                WFS_URL,
-                content=xml_body,
-                headers={"Content-Type": "application/xml"},
-            )
-            try:
-                resp.raise_for_status()
-            except httpx.HTTPStatusError:
-                log.warning("usgs_wfs_http_error", ftype=ftype, status_code=resp.status_code)
-                raise
-            return resp
+        client = self._get_client()
+        resp = client.post(
+            WFS_URL,
+            content=xml_body,
+            headers={"Content-Type": "application/xml"},
+        )
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError:
+            log.warning("usgs_wfs_http_error", ftype=ftype, status_code=resp.status_code)
+            raise
+        return resp
 
     # ------------------------------------------------------------------
     # NYC filtering
@@ -348,12 +393,18 @@ class USGSStructuresExtractor:
     @staticmethod
     def _filter_nyc(df: pl.DataFrame) -> pl.DataFrame:
         """Filter to NYC records using ZIP prefix and add borough column."""
-        return (
-            df.with_columns(pl.col("ZIPCODE").str.slice(0, 3).alias("zip_prefix"))
+        before = len(df)
+        result = (
+            df.filter(pl.col("ZIPCODE").is_not_null())
+            .with_columns(pl.col("ZIPCODE").str.slice(0, 3).alias("zip_prefix"))
             .filter(pl.col("zip_prefix").is_in(list(NYC_ZIP_PREFIXES.keys())))
             .with_columns(pl.col("zip_prefix").replace(NYC_ZIP_PREFIXES).alias("borough"))
             .drop("zip_prefix")
         )
+        dropped = before - len(result)
+        if dropped > 0:
+            log.info("usgs_nyc_filter", kept=len(result), dropped=dropped)
+        return result
 
     # ------------------------------------------------------------------
     # WFS request builder

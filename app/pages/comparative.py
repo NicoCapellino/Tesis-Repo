@@ -207,7 +207,7 @@ for label, layer_df in usgs_layers.items():
     matrices[label] = matrix
     counts = (matrix <= radius_m).sum(axis=0)
 
-    for idx, row in enumerate(layer_df.iter_rows(named=True)):
+    for idx, row in enumerate(layer_df.to_dicts()):
         exposure_rows.append(
             {
                 "capa_v2": label,
@@ -237,7 +237,7 @@ dataframe(summary_df.to_pandas(), hide_index=True)
 top_exposure = exposure_df.sort("crimenes_en_radio", descending=True).head(20)
 
 dominant_rows: list[dict] = []
-for row in top_exposure.iter_rows(named=True):
+for row in top_exposure.to_dicts():
     matrix = matrices[row["capa_v2"]]
     mask = matrix[:, row["facility_index"]] <= radius_m
     near_offenses = offense_values[mask]
@@ -355,9 +355,7 @@ layer_styles = {
 for label, layer_df in usgs_layers.items():
     color, marker_radius = layer_styles.get(label, ("gray", 4))
     group = folium.FeatureGroup(name=label, show=label == "USGS V2 - Policia")
-    for row in layer_df.iter_rows(named=True):
-        if row.get("lat") is None or row.get("lon") is None:
-            continue
+    for row in layer_df.drop_nulls(subset=["lat", "lon"]).to_dicts():
         folium.CircleMarker(
             location=[row["lat"], row["lon"]],
             radius=marker_radius,
