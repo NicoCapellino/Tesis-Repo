@@ -27,17 +27,34 @@ def _distance_matrix(
     c_lons: tuple[float, ...],
     i_lats: tuple[float, ...],
     i_lons: tuple[float, ...],
+    *,
+    chunk_size: int = 2_000,
 ) -> np.ndarray:
-    crimes_lat = np.array(c_lats)
-    crimes_lon = np.array(c_lons)
-    infra_lat = np.array(i_lats)
-    infra_lon = np.array(i_lons)
-    return haversine_np(
-        crimes_lat[:, None],
-        crimes_lon[:, None],
-        infra_lat[None, :],
-        infra_lon[None, :],
-    )
+    """Full (n_crimes x n_facilities) distance matrix in meters.
+
+    Built in row chunks into a preallocated float32 array. A single full
+    float64 broadcast would allocate several (n x m) temporaries at once —
+    with large layers (e.g. ~17.5k bus stops) that peaks at tens of GB and
+    OOMs. Chunking + float32 bounds memory while keeping the full matrix the
+    exposure counts below rely on.
+    """
+    crimes_lat = np.asarray(c_lats, dtype=np.float64)
+    crimes_lon = np.asarray(c_lons, dtype=np.float64)
+    infra_lat = np.asarray(i_lats, dtype=np.float64)
+    infra_lon = np.asarray(i_lons, dtype=np.float64)
+
+    n = crimes_lat.shape[0]
+    m = infra_lat.shape[0]
+    out = np.empty((n, m), dtype=np.float32)
+    for start in range(0, n, chunk_size):
+        end = min(start + chunk_size, n)
+        out[start:end] = haversine_np(
+            crimes_lat[start:end, None],
+            crimes_lon[start:end, None],
+            infra_lat[None, :],
+            infra_lon[None, :],
+        ).astype(np.float32)
+    return out
 
 
 def _facility_type(row: dict, fallback: str) -> str:
@@ -351,11 +368,18 @@ layer_styles = {
     "USGS V2 - Policia": ("blue", 6),
     "USGS V2 - Bomberos": ("orange", 5),
     "USGS V2 - Salud": ("red", 5),
+    "MTA - Omnibus": ("green", 3),
 }
+# Cap markers per layer so large layers (e.g. ~17.5k bus stops) don't bloat the
+# map and freeze the browser; the exposure/nearest analyses above use the full layer.
+MAX_MARKERS_PER_LAYER = 1_500
 for label, layer_df in usgs_layers.items():
     color, marker_radius = layer_styles.get(label, ("gray", 4))
     group = folium.FeatureGroup(name=label, show=label == "USGS V2 - Policia")
-    for row in layer_df.drop_nulls(subset=["lat", "lon"]).to_dicts():
+    render_df = layer_df.drop_nulls(subset=["lat", "lon"])
+    if len(render_df) > MAX_MARKERS_PER_LAYER:
+        render_df = render_df.sample(n=MAX_MARKERS_PER_LAYER, seed=42)
+    for row in render_df.to_dicts():
         folium.CircleMarker(
             location=[row["lat"], row["lon"]],
             radius=marker_radius,

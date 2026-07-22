@@ -1,13 +1,14 @@
 # NYC Crime Analysis Dashboard V2
 
 Dashboard interactivo y pipeline ETL para analizar crimenes de Nueva York
-cruzados con infraestructura **USGS V2**.
+cruzados con infraestructura de referencia.
 
-La version V2 usa solo fuentes de referencia USGS para infraestructura:
+Capas de infraestructura (NYC):
 
-- `healthcare.parquet`
-- `usgs_police.parquet`
-- `usgs_fire.parquet`
+- `healthcare.parquet` (USGS National Map)
+- `usgs_police.parquet` (USGS National Map)
+- `usgs_fire.parquet` (USGS National Map)
+- `mta_bus_stops.parquet` (MTA Bus Stops, NY State Open Data)
 
 ## Requisitos
 
@@ -57,6 +58,7 @@ src/                         Pipeline ETL
   extract/
     nypd_complaints.py       NYPD Complaint Data via Socrata
     usgs_structures.py       USGS V2 healthcare, police, fire
+    mta_bus_stops.py         MTA bus stops via Socrata (data.ny.gov)
   transform/
     complaints.py            Limpieza, tipado y features temporales
     geospatial.py            Validacion de coordenadas NYC
@@ -80,6 +82,7 @@ data/processed/complaints/complaints_2025.parquet
 data/reference/new_york/healthcare.parquet
 data/reference/new_york/usgs_police.parquet
 data/reference/new_york/usgs_fire.parquet
+data/reference/new_york/mta_bus_stops.parquet
 ```
 
 ## Dashboard V2
@@ -126,3 +129,4 @@ Variables con prefijo `NYC_PIPELINE_`:
 - NYC Open Data - NYPD Complaint Data Historic
 - NYC Open Data - NYPD Complaint Data Current Year To Date
 - USGS National Map Structures WFS
+- MTA Bus Stops - NY State Open Data (Socrata `2ucp-7wg5`)

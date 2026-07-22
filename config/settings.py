@@ -45,6 +45,10 @@ class SocrataDataset:
     def endpoint(self) -> str:
         return f"{self.base_url}/{self.resource_id}.csv"
 
+    @property
+    def json_endpoint(self) -> str:
+        return f"{self.base_url}/{self.resource_id}.json"
+
 
 # Datasets we consume - adding a new one is a single line.
 NYPD_DATASETS: dict[str, SocrataDataset] = {
@@ -95,6 +99,21 @@ CITY_CONFIGS: dict[str, CityConfig] = {
 }
 
 DEFAULT_CITY = "new_york"
+
+
+# ---------------------------------------------------------------------------
+# MTA transit reference layer (NY State Open Data, Socrata)
+# ---------------------------------------------------------------------------
+# Bus stops for NYC transit-proximity analysis. Note this dataset lives on the
+# state portal (data.ny.gov), not data.cityofnewyork.us — SocrataDataset's
+# base_url override handles that. The raw resource is at stop×route×direction
+# granularity; the extractor collapses it to one row per physical stop_id and
+# filters to the NYC bounding box (~17.5k unique stops).
+MTA_BUS_STOPS = SocrataDataset(
+    resource_id="2ucp-7wg5",
+    base_url="https://data.ny.gov/resource",
+    description="MTA Bus Stops (deduplicated to unique NYC stops)",
+)
 
 
 # ---------------------------------------------------------------------------

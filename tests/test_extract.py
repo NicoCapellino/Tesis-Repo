@@ -13,7 +13,8 @@ from unittest.mock import MagicMock, patch
 import polars as pl
 import pytest
 
-from config.settings import NYPD_DATASETS, PipelineSettings
+from config.settings import MTA_BUS_STOPS, NYPD_DATASETS, PipelineSettings
+from src.extract.mta_bus_stops import MTABusStopsExtractor
 from src.extract.nypd_complaints import NYPDComplaintsExtractor
 from src.extract.usgs_structures import USGSStructuresExtractor
 
@@ -266,3 +267,74 @@ class TestUSGSStructuresExtractor:
         )
         result = USGSStructuresExtractor._filter_nyc(df)
         assert len(result) == 1
+
+
+class TestMTABusStopsExtractor:
+    """Tests for MTA bus stop normalization, bbox filtering, and dedup."""
+
+    def test_dataset_json_endpoint_is_valid(self) -> None:
+        """The MTA descriptor should expose a valid JSON endpoint on data.ny.gov."""
+        assert MTA_BUS_STOPS.resource_id == "2ucp-7wg5"
+        assert MTA_BUS_STOPS.json_endpoint.startswith("https://data.ny.gov/")
+        assert MTA_BUS_STOPS.json_endpoint.endswith(".json")
+
+    def test_normalize_casts_types_and_adds_facility_type(self) -> None:
+        """String lat/lon become floats and every row is tagged 'Bus Stop'."""
+        rows = [
+            {"stop_id": "100014", "name": "BEDFORD PK BL", "lat": "40.8725", "lon": "-73.8881"},
+        ]
+        result = MTABusStopsExtractor()._normalize(rows, "new_york")
+
+        assert result.columns == ["name", "lat", "lon", "facility_type", "stop_id"]
+        assert result.schema["lat"] == pl.Float64
+        assert result.schema["lon"] == pl.Float64
+        assert result["facility_type"].to_list() == ["Bus Stop"]
+        assert result["lat"].to_list()[0] == pytest.approx(40.8725)
+
+    def test_normalize_filters_outside_nyc_bbox(self) -> None:
+        """Stops outside the NYC bounding box should be dropped."""
+        rows = [
+            # Inside NYC
+            {"stop_id": "1", "name": "NYC Stop", "lat": "40.75", "lon": "-73.99"},
+            # Upstate / outside bbox (latitude too high)
+            {"stop_id": "2", "name": "Far Stop", "lat": "42.65", "lon": "-73.75"},
+        ]
+        result = MTABusStopsExtractor()._normalize(rows, "new_york")
+
+        assert result["stop_id"].to_list() == ["1"]
+
+    def test_normalize_dedupes_by_stop_id(self) -> None:
+        """Duplicate stop_id rows should collapse to a single physical stop."""
+        rows = [
+            {"stop_id": "100014", "name": "HYLAN BL", "lat": "40.60", "lon": "-74.10"},
+            {"stop_id": "100014", "name": "HYLAN BLVD", "lat": "40.60", "lon": "-74.10"},
+        ]
+        result = MTABusStopsExtractor()._normalize(rows, "new_york")
+
+        assert len(result) == 1
+        assert result["stop_id"].to_list() == ["100014"]
+
+    def test_normalize_empty_rows_returns_typed_empty_frame(self) -> None:
+        """An empty payload should yield a typed empty frame, not crash."""
+        result = MTABusStopsExtractor()._normalize([], "new_york")
+
+        assert len(result) == 0
+        assert result.columns == ["name", "lat", "lon", "facility_type", "stop_id"]
+
+    def test_extract_and_save_writes_parquet(self, tmp_path: Path) -> None:
+        """extract_and_save should persist mta_bus_stops.parquet."""
+        rows = [
+            {"stop_id": "1", "name": "Stop A", "lat": "40.75", "lon": "-73.99"},
+            {"stop_id": "2", "name": "Stop B", "lat": "40.70", "lon": "-73.95"},
+        ]
+        extractor = MTABusStopsExtractor()
+
+        with patch.object(extractor, "_fetch_stops", return_value=rows):
+            out_path = extractor.extract_and_save("new_york", output_dir=tmp_path)
+
+        assert out_path == tmp_path / "mta_bus_stops.parquet"
+        assert out_path.exists()
+
+        saved = pl.read_parquet(out_path)
+        assert len(saved) == 2
+        assert set(saved["facility_type"].unique().to_list()) == {"Bus Stop"}
