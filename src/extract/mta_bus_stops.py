@@ -7,9 +7,11 @@ USGS V2 police, fire, and healthcare layers.
 
 Source: https://data.ny.gov/Transportation/MTA-Bus-Stops/2ucp-7wg5 (data.ny.gov)
 
-The raw dataset is at stop×route×direction granularity (~3.1M rows). We collapse
-it to one row per ``stop_id`` server-side via a grouped SoQL query and filter to
-the NYC bounding box, so a single request returns the ~17.5k unique NYC stops.
+The raw dataset is at stop×route×direction granularity (~3.1M rows) and includes
+historical/inactive records from old schedule bundles. We keep only stops that
+are currently in effect and serve passengers (``in_effect`` / ``revenue_stop``),
+collapse to one row per ``stop_id`` server-side via a grouped SoQL query, and
+filter to the NYC bounding box — a single request returns ~13.5k active NYC stops.
 """
 
 from __future__ import annotations
@@ -39,6 +41,11 @@ log = get_logger(__name__)
 # helpers (distances, maps) can consume every layer uniformly.
 OUTPUT_COLUMNS = ["name", "lat", "lon", "facility_type", "stop_id"]
 FACILITY_TYPE = "Bus Stop"
+
+# Keep only currently-active passenger stops. Both columns are stored as text
+# ("true"/"false", "1"/"0"), so they are compared as strings. Without this filter
+# the group-by would also pick up ~3.9k historical/inactive stops from old bundles.
+ACTIVE_FILTER = "in_effect = 'true' AND revenue_stop = '1'"
 
 # Empty-result schema, so an empty response returns a typed frame instead of crashing.
 _EMPTY_SCHEMA: dict[str, pl.DataType] = {
@@ -127,6 +134,25 @@ class MTABusStopsExtractor:
     # HTTP fetch
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _build_soql_params(city: str, limit: int) -> dict[str, str]:
+        """Build the grouped SoQL query params: NYC bbox + active passenger stops."""
+        min_lat, min_lon, max_lat, max_lon = CITY_CONFIGS[city].bbox
+        where = (
+            f"latitude between {min_lat} and {max_lat} "
+            f"and longitude between {min_lon} and {max_lon} "
+            f"and {ACTIVE_FILTER}"
+        )
+        return {
+            "$select": (
+                "stop_id, min(stop_name) as name, "
+                "min(latitude) as lat, min(longitude) as lon"
+            ),
+            "$where": where,
+            "$group": "stop_id",
+            "$limit": str(limit),
+        }
+
     @retry(
         retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.TransportError)),
         stop=stop_after_attempt(5),
@@ -134,7 +160,7 @@ class MTABusStopsExtractor:
         reraise=True,
     )
     def _fetch_stops(self, city: str) -> list[dict[str, object]]:
-        """Query Socrata for stops grouped by ``stop_id`` within the NYC bbox.
+        """Query Socrata for active stops grouped by ``stop_id`` within the NYC bbox.
 
         The grouped SoQL query collapses stop×route×direction rows to one row
         per physical stop, so a single request returns the full set of stops.
@@ -142,16 +168,7 @@ class MTABusStopsExtractor:
         ``latitude``); otherwise Socrata resolves the WHERE filter to the
         aggregate and rejects the query.
         """
-        min_lat, min_lon, max_lat, max_lon = CITY_CONFIGS[city].bbox
-        params = {
-            "$select": "stop_id, min(stop_name) as name, min(latitude) as lat, min(longitude) as lon",
-            "$where": (
-                f"latitude between {min_lat} and {max_lat} "
-                f"and longitude between {min_lon} and {max_lon}"
-            ),
-            "$group": "stop_id",
-            "$limit": str(self.settings.page_size),
-        }
+        params = self._build_soql_params(city, self.settings.page_size)
         client = self._get_client()
         response = client.get(MTA_BUS_STOPS.json_endpoint, params=params)
         response.raise_for_status()

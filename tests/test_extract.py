@@ -278,6 +278,18 @@ class TestMTABusStopsExtractor:
         assert MTA_BUS_STOPS.json_endpoint.startswith("https://data.ny.gov/")
         assert MTA_BUS_STOPS.json_endpoint.endswith(".json")
 
+    def test_soql_params_filter_active_passenger_stops(self) -> None:
+        """The query must restrict to the NYC bbox and active, revenue stops."""
+        params = MTABusStopsExtractor._build_soql_params("new_york", 50_000)
+        where = params["$where"]
+
+        assert "in_effect = 'true'" in where
+        assert "revenue_stop = '1'" in where
+        assert "latitude between" in where
+        assert "longitude between" in where
+        assert params["$group"] == "stop_id"
+        assert params["$limit"] == "50000"
+
     def test_normalize_casts_types_and_adds_facility_type(self) -> None:
         """String lat/lon become floats and every row is tagged 'Bus Stop'."""
         rows = [

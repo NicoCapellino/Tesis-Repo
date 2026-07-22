@@ -100,6 +100,21 @@ OUTPUT_COLUMNS: list[str] = [
     "hour",
 ]
 
+# Valid NYPD age-group bins. Anything else — numeric junk like "-968", "1023",
+# "2021" — is a data-entry error and is nulled out during transformation.
+VALID_AGE_GROUPS: frozenset[str] = frozenset({"<18", "18-24", "25-44", "45-64", "65+"})
+
+# Valid NYPD sex codes. The victim field doubles as a victim-type field, so it
+# also allows non-person entities: D = Business/Organization, E = PSNY/People of
+# the State of NY (used for victimless/public-order crimes). Suspects are always
+# a person or unknown. Anything outside these sets (e.g. the stray "L") is junk.
+VALID_VICTIM_SEX: frozenset[str] = frozenset({"M", "F", "D", "E", "U"})
+VALID_SUSPECT_SEX: frozenset[str] = frozenset({"M", "F", "U"})
+
+# A crime's end date more than this many years after its start is treated as a
+# data-entry error (real absurd values seen: years 1010 and 2052).
+MAX_CRIME_SPAN_YEARS = 10
+
 
 class ComplaintsTransformer:
     """Transforms raw NYPD complaint data into clean, typed, analysis-ready format.
@@ -119,8 +134,11 @@ class ComplaintsTransformer:
             1. Rename columns to descriptive names.
             2. Cast data types (coordinates, dates, numeric codes).
             3. Clean null placeholders (``"(null)"``, ``"UNKNOWN"``).
-            4. Derive temporal features (year, month, day_of_week, hour).
-            5. Select and order final output columns.
+            4. Null out invalid victim/suspect age groups.
+            5. Null out invalid victim/suspect sex codes.
+            6. Null out corrupt crime end dates (before start / absurd year).
+            7. Derive temporal features (year, month, day_of_week, hour).
+            8. Select and order final output columns.
 
         Args:
             df: Raw DataFrame with Socrata column names (all strings).
@@ -133,6 +151,9 @@ class ComplaintsTransformer:
         df = self._rename_columns(df)
         df = self._cast_types(df)
         df = self._clean_nulls(df)
+        df = self._clean_ages(df)
+        df = self._clean_sex(df)
+        df = self._clean_end_dates(df)
         df = self._derive_temporal_features(df)
         df = self._select_output_columns(df)
 
@@ -254,6 +275,65 @@ class ComplaintsTransformer:
             )
 
         return df
+
+    @staticmethod
+    def _clean_ages(df: pl.DataFrame) -> pl.DataFrame:
+        """Null out invalid victim/suspect age groups.
+
+        NYPD age fields sometimes contain data-entry garbage (e.g. ``"-968"``,
+        ``"1023"``, ``"2021"``). Only the canonical bins are kept; everything
+        else becomes null so those records are excluded from age-based analysis
+        while the crime itself is preserved.
+        """
+        age_cols = [c for c in ("victim_age_group", "suspect_age_group") if c in df.columns]
+        if age_cols:
+            df = df.with_columns(
+                pl.when(pl.col(c).is_in(list(VALID_AGE_GROUPS)))
+                .then(pl.col(c))
+                .otherwise(None)
+                .alias(c)
+                for c in age_cols
+            )
+        return df
+
+    @staticmethod
+    def _clean_sex(df: pl.DataFrame) -> pl.DataFrame:
+        """Null out invalid victim/suspect sex codes.
+
+        Keeps the documented NYPD codes (persons M/F, unknown U, and — for
+        victims only — the entity types D/E). Junk such as the stray ``"L"``
+        becomes null so it is excluded from demographic breakdowns.
+        """
+        specs = [("victim_sex", VALID_VICTIM_SEX), ("suspect_sex", VALID_SUSPECT_SEX)]
+        exprs = [
+            pl.when(pl.col(col).is_in(list(valid)))
+            .then(pl.col(col))
+            .otherwise(None)
+            .alias(col)
+            for col, valid in specs
+            if col in df.columns
+        ]
+        if exprs:
+            df = df.with_columns(exprs)
+        return df
+
+    @staticmethod
+    def _clean_end_dates(df: pl.DataFrame) -> pl.DataFrame:
+        """Null out corrupt ``crime_end_date`` values.
+
+        An end date before the start date is impossible, and one more than
+        ``MAX_CRIME_SPAN_YEARS`` after the start is implausible (real data had
+        years like 1010 and 2052). Such values are nulled; the record is kept.
+        """
+        if "crime_end_date" not in df.columns or "crime_start_date" not in df.columns:
+            return df
+
+        start = pl.col("crime_start_date")
+        end = pl.col("crime_end_date")
+        invalid = (end < start) | (end.dt.year() > start.dt.year() + MAX_CRIME_SPAN_YEARS)
+        return df.with_columns(
+            pl.when(invalid).then(None).otherwise(end).alias("crime_end_date")
+        )
 
     @staticmethod
     def _derive_temporal_features(df: pl.DataFrame) -> pl.DataFrame:
