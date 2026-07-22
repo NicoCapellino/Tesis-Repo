@@ -244,7 +244,11 @@ else:
         st.metric("Confianza maxima", f"{rules_display['confidence'].max():.3f}")
 
     def _highlight_lift(row: pd.Series) -> list[str]:
-        return ["background-color: #fff3cd" if row["lift"] > 1.5 else "" for _ in row]
+        # Set both background and text colour so the highlight stays readable in
+        # both light and dark themes (the previous pale yellow left the theme's
+        # white text unreadable). Dark green = strong association (lift > 1.5).
+        style = "background-color: #1b5e20; color: #ffffff; font-weight: bold"
+        return [style if row["lift"] > 1.5 else "" for _ in row]
 
     dataframe(
         rules_display.style.apply(_highlight_lift, axis=1),
