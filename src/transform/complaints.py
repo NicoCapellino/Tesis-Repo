@@ -306,10 +306,7 @@ class ComplaintsTransformer:
         """
         specs = [("victim_sex", VALID_VICTIM_SEX), ("suspect_sex", VALID_SUSPECT_SEX)]
         exprs = [
-            pl.when(pl.col(col).is_in(list(valid)))
-            .then(pl.col(col))
-            .otherwise(None)
-            .alias(col)
+            pl.when(pl.col(col).is_in(list(valid))).then(pl.col(col)).otherwise(None).alias(col)
             for col, valid in specs
             if col in df.columns
         ]
@@ -331,9 +328,7 @@ class ComplaintsTransformer:
         start = pl.col("crime_start_date")
         end = pl.col("crime_end_date")
         invalid = (end < start) | (end.dt.year() > start.dt.year() + MAX_CRIME_SPAN_YEARS)
-        return df.with_columns(
-            pl.when(invalid).then(None).otherwise(end).alias("crime_end_date")
-        )
+        return df.with_columns(pl.when(invalid).then(None).otherwise(end).alias("crime_end_date"))
 
     @staticmethod
     def _derive_temporal_features(df: pl.DataFrame) -> pl.DataFrame:

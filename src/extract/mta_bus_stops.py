@@ -7,7 +7,7 @@ USGS V2 police, fire, and healthcare layers.
 
 Source: https://data.ny.gov/Transportation/MTA-Bus-Stops/2ucp-7wg5 (data.ny.gov)
 
-The raw dataset is at stop×route×direction granularity (~3.1M rows) and includes
+The raw dataset is at stop-route-direction granularity (~3.1M rows) and includes
 historical/inactive records from old schedule bundles. We keep only stops that
 are currently in effect and serve passengers (``in_effect`` / ``revenue_stop``),
 collapse to one row per ``stop_id`` server-side via a grouped SoQL query, and
@@ -48,7 +48,7 @@ FACILITY_TYPE = "Bus Stop"
 ACTIVE_FILTER = "in_effect = 'true' AND revenue_stop = '1'"
 
 # Empty-result schema, so an empty response returns a typed frame instead of crashing.
-_EMPTY_SCHEMA: dict[str, pl.DataType] = {
+_EMPTY_SCHEMA: dict[str, type[pl.DataType]] = {
     "name": pl.Utf8,
     "lat": pl.Float64,
     "lon": pl.Float64,
@@ -145,8 +145,7 @@ class MTABusStopsExtractor:
         )
         return {
             "$select": (
-                "stop_id, min(stop_name) as name, "
-                "min(latitude) as lat, min(longitude) as lon"
+                "stop_id, min(stop_name) as name, min(latitude) as lat, min(longitude) as lon"
             ),
             "$where": where,
             "$group": "stop_id",
@@ -162,7 +161,7 @@ class MTABusStopsExtractor:
     def _fetch_stops(self, city: str) -> list[dict[str, object]]:
         """Query Socrata for active stops grouped by ``stop_id`` within the NYC bbox.
 
-        The grouped SoQL query collapses stop×route×direction rows to one row
+        The grouped SoQL query collapses stop-route-direction rows to one row
         per physical stop, so a single request returns the full set of stops.
         Aggregate aliases must differ from the source column names (``lat`` not
         ``latitude``); otherwise Socrata resolves the WHERE filter to the
@@ -172,7 +171,7 @@ class MTABusStopsExtractor:
         client = self._get_client()
         response = client.get(MTA_BUS_STOPS.json_endpoint, params=params)
         response.raise_for_status()
-        rows = response.json()
+        rows: list[dict[str, object]] = response.json()
         log.info("mta_response", returned=len(rows))
         if len(rows) >= self.settings.page_size:
             log.warning(

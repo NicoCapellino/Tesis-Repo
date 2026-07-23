@@ -106,7 +106,7 @@ DEFAULT_CITY = "new_york"
 # ---------------------------------------------------------------------------
 # Bus stops for NYC transit-proximity analysis. Note this dataset lives on the
 # state portal (data.ny.gov), not data.cityofnewyork.us — SocrataDataset's
-# base_url override handles that. The raw resource is at stop×route×direction
+# base_url override handles that. The raw resource is at stop-route-direction
 # granularity; the extractor collapses it to one row per physical stop_id and
 # filters to the NYC bounding box (~17.5k unique stops).
 MTA_BUS_STOPS = SocrataDataset(
