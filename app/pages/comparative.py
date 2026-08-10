@@ -116,8 +116,13 @@ for col, row in zip(cols, inventory_rows, strict=False):
 
 dataframe(inventory_df.to_pandas(), hide_index=True)
 
+# Solo capas con borough: MTA - Omnibus no lo trae, y sus filas null vuelven
+# el eje X numerico (Plotly infiere el tipo del primer trace) dejando el
+# grafico vacio, ademas de aplastar la escala con sus ~13.5k paradas.
 facility_frames: list[pl.DataFrame] = []
 for label, layer_df in usgs_layers.items():
+    if "borough" not in layer_df.columns:
+        continue
     frame = layer_df.with_columns(pl.lit(label).alias("capa_v2"))
     keep_cols = [c for c in ["capa_v2", "borough", "facility_type"] if c in frame.columns]
     facility_frames.append(frame.select(keep_cols))
@@ -125,21 +130,25 @@ for label, layer_df in usgs_layers.items():
 if facility_frames:
     by_borough = (
         pl.concat(facility_frames, how="diagonal_relaxed")
+        .filter(pl.col("borough").is_not_null())
         .group_by("capa_v2", "borough")
         .len()
         .rename({"len": "instalaciones"})
         .sort("capa_v2", "borough")
     )
-    fig_inventory = px.bar(
-        by_borough.to_pandas(),
-        x="borough",
-        y="instalaciones",
-        color="capa_v2",
-        barmode="group",
-        title="USGS V2: instalaciones por borough",
-        labels={"borough": "Borough", "instalaciones": "Instalaciones", "capa_v2": "Capa"},
-    )
-    plotly_chart(fig_inventory)
+    if by_borough.is_empty():
+        st.info("Las capas cargadas no tienen borough asignado.")
+    else:
+        fig_inventory = px.bar(
+            by_borough.to_pandas(),
+            x="borough",
+            y="instalaciones",
+            color="capa_v2",
+            barmode="group",
+            title="USGS V2: instalaciones por borough",
+            labels={"borough": "Borough", "instalaciones": "Instalaciones", "capa_v2": "Capa"},
+        )
+        plotly_chart(fig_inventory)
 
 
 # ---------------------------------------------------------------------------
