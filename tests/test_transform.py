@@ -134,3 +134,67 @@ class TestComplaintsTransformer:
         empty = pl.DataFrame({"cmplnt_num": [], "boro_nm": [], "latitude": [], "longitude": []})
         result = transformer.transform(empty)
         assert len(result) == 0
+
+    def test_invalid_sex_codes_are_nulled(self, transformer: ComplaintsTransformer) -> None:
+        """Junk sex codes (e.g. 'L') are nulled; valid person/entity codes kept."""
+        raw = pl.DataFrame(
+            {
+                "cmplnt_num": ["1", "2", "3", "4", "5"],
+                "cmplnt_fr_dt": ["2024-01-01T00:00:00.000"] * 5,
+                "cmplnt_fr_tm": ["10:00:00"] * 5,
+                "vic_sex": ["M", "F", "D", "E", "L"],
+                "susp_sex": ["M", "U", "F", "X", "L"],
+            }
+        )
+        result = transformer.transform(raw)
+
+        # Victims keep M/F/D/E; the invalid 'L' becomes null.
+        assert result["victim_sex"].to_list() == ["M", "F", "D", "E", None]
+        # Suspects keep only M/F/U; 'X' and 'L' become null.
+        assert result["suspect_sex"].to_list() == ["M", "U", "F", None, None]
+
+    def test_corrupt_end_dates_are_nulled(self, transformer: ComplaintsTransformer) -> None:
+        """End dates before the start or with absurd years are nulled."""
+        import datetime
+
+        raw = pl.DataFrame(
+            {
+                "cmplnt_num": ["1", "2", "3"],
+                "cmplnt_fr_dt": [
+                    "2024-05-10T00:00:00.000",  # valid: end is one day later
+                    "2020-10-27T00:00:00.000",  # end in year 1010 (before start)
+                    "2025-11-06T00:00:00.000",  # end in year 2052 (absurd future)
+                ],
+                "cmplnt_fr_tm": ["10:00:00"] * 3,
+                "cmplnt_to_dt": [
+                    "2024-05-11T00:00:00.000",
+                    "1010-10-21T00:00:00.000",
+                    "2052-11-08T00:00:00.000",
+                ],
+            }
+        )
+        result = transformer.transform(raw)
+        ends = result["crime_end_date"].to_list()
+
+        assert ends[0] == datetime.date(2024, 5, 11)  # valid kept
+        assert ends[1] is None  # before start → nulled
+        assert ends[2] is None  # absurd year → nulled
+
+    def test_invalid_age_groups_are_nulled(self, transformer: ComplaintsTransformer) -> None:
+        """Junk age values are nulled; valid bins and the crime row are kept."""
+        raw = pl.DataFrame(
+            {
+                "cmplnt_num": ["1", "2", "3", "4"],
+                "cmplnt_fr_dt": ["2024-01-01T00:00:00.000"] * 4,
+                "cmplnt_fr_tm": ["10:00:00"] * 4,
+                "vic_age_group": ["25-44", "-968", "1023", "65+"],
+                "susp_age_group": ["2021", "18-24", "-1", "45-64"],
+            }
+        )
+        result = transformer.transform(raw)
+
+        # Junk values become null; valid bins survive.
+        assert result["victim_age_group"].to_list() == ["25-44", None, None, "65+"]
+        assert result["suspect_age_group"].to_list() == [None, "18-24", None, "45-64"]
+        # No rows dropped — the crimes are preserved.
+        assert len(result) == 4

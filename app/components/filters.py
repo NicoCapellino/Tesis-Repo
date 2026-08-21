@@ -41,16 +41,23 @@ def get_usgs_fire_v2() -> pl.DataFrame | None:
     return st.session_state.get("usgs_fire_v2")
 
 
-def get_usgs_v2_layers() -> dict[str, pl.DataFrame]:
-    """Return all loaded USGS V2 infrastructure layers.
+def get_mta_bus_stops_v2() -> pl.DataFrame | None:
+    """Return MTA bus stops (transit reference layer) from session state."""
+    return st.session_state.get("mta_bus_stops_v2")
 
-    Labels are intentionally prefixed with ``USGS V2`` so analysis pages make
-    the authoritative data source explicit.
+
+def get_usgs_v2_layers() -> dict[str, pl.DataFrame]:
+    """Return all loaded reference infrastructure layers.
+
+    Includes the USGS V2 layers (police, fire, healthcare) plus the MTA transit
+    layer (bus stops). Labels name the authoritative source explicitly so
+    analysis pages make the data provenance clear.
     """
     candidates = {
         "USGS V2 - Policia": get_usgs_police_v2(),
         "USGS V2 - Bomberos": get_usgs_fire_v2(),
         "USGS V2 - Salud": get_usgs_healthcare_v2(),
+        "MTA - Omnibus": get_mta_bus_stops_v2(),
     }
     return {label: df for label, df in candidates.items() if df is not None and not df.is_empty()}
 

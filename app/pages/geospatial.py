@@ -47,12 +47,21 @@ layer_styles = {
     "USGS V2 - Policia": ("blue", 5),
     "USGS V2 - Bomberos": ("orange", 5),
     "USGS V2 - Salud": ("red", 5),
+    "MTA - Omnibus": ("green", 3),
 }
+
+# Cap markers per layer: large layers (e.g. ~17.5k bus stops) would otherwise
+# serialize tens of thousands of markers into the map, bloating it and freezing
+# the browser. We sample down for display; analyses still use the full layer.
+MAX_MARKERS_PER_LAYER = 1_500
 
 for label, layer_df in usgs_layers.items():
     color, radius = layer_styles.get(label, ("gray", 4))
     layer_group = folium.FeatureGroup(name=label, show=label == "USGS V2 - Policia")
-    for row in layer_df.drop_nulls(subset=["lat", "lon"]).to_dicts():
+    render_df = layer_df.drop_nulls(subset=["lat", "lon"])
+    if len(render_df) > MAX_MARKERS_PER_LAYER:
+        render_df = render_df.sample(n=MAX_MARKERS_PER_LAYER, seed=42)
+    for row in render_df.to_dicts():
         folium.CircleMarker(
             location=[row["lat"], row["lon"]],
             radius=radius,
@@ -70,7 +79,7 @@ for label, layer_df in usgs_layers.items():
     layer_group.add_to(m)
 
 if usgs_layers:
-    folium.LayerControl().add_to(m)
+    folium.LayerControl(collapsed=False).add_to(m)
 
 st_folium(m, width=None, height=600, key="geospatial_map_v2")
 
