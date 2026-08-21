@@ -39,6 +39,53 @@ def haversine_np(
     return r * 2 * np.arcsin(np.sqrt(np.clip(a, 0, 1)))
 
 
+def nearest_distances(
+    crime_lats: np.ndarray,
+    crime_lons: np.ndarray,
+    station_lats: np.ndarray,
+    station_lons: np.ndarray,
+    *,
+    chunk_size: int = 2_000,
+) -> np.ndarray:
+    """For each crime, return the distance to the nearest station in meters.
+
+    Processes crimes in chunks so the transient (chunk x n_stations) distance
+    matrix stays small. A single full (n_crimes x n_stations) broadcast would
+    allocate several arrays of that size at once — with large layers such as the
+    ~17.5k MTA bus stops and tens of thousands of crimes that peaks at tens of GB
+    and OOMs. Chunking bounds peak memory while giving identical results.
+
+    Args:
+        crime_lats, crime_lons: 1-D arrays of crime coordinates.
+        station_lats, station_lons: 1-D arrays of station coordinates.
+        chunk_size: Number of crimes processed per broadcast block.
+
+    Returns:
+        1-D numpy array of shape (n_crimes,) with distances in meters.
+    """
+    c_lats = np.asarray(crime_lats, dtype=np.float64)
+    c_lons = np.asarray(crime_lons, dtype=np.float64)
+    s_lats = np.asarray(station_lats, dtype=np.float64)
+    s_lons = np.asarray(station_lons, dtype=np.float64)
+
+    n = c_lats.shape[0]
+    out = np.empty(n, dtype=np.float64)
+    if n == 0 or s_lats.shape[0] == 0:
+        out.fill(np.nan)
+        return out
+
+    for start in range(0, n, chunk_size):
+        end = min(start + chunk_size, n)
+        block = haversine_np(
+            c_lats[start:end, None],
+            c_lons[start:end, None],
+            s_lats[None, :],
+            s_lons[None, :],
+        )
+        out[start:end] = block.min(axis=1)
+    return out
+
+
 @st.cache_data(ttl=3600, show_spinner="Calculando distancias...")
 def compute_nearest_distances(
     crime_lats: tuple[float, ...],
@@ -46,10 +93,7 @@ def compute_nearest_distances(
     station_lats: tuple[float, ...],
     station_lons: tuple[float, ...],
 ) -> np.ndarray:
-    """For each crime, return the distance to the nearest station in meters.
-
-    Uses numpy broadcasting: O(n_crimes x n_stations) but fully vectorized,
-    which is fast for the USGS V2 reference layers used by this dashboard.
+    """Cached wrapper over :func:`nearest_distances` taking hashable tuples.
 
     Args:
         crime_lats, crime_lons: Tuples of crime coordinates (hashable for cache).
@@ -58,19 +102,12 @@ def compute_nearest_distances(
     Returns:
         1-D numpy array of shape (n_crimes,) with distances in meters.
     """
-    c_lats = np.array(crime_lats)
-    c_lons = np.array(crime_lons)
-    s_lats = np.array(station_lats)
-    s_lons = np.array(station_lons)
-
-    # Shape: (n_crimes, n_stations) via broadcasting
-    dist_matrix = haversine_np(
-        c_lats[:, None],
-        c_lons[:, None],
-        s_lats[None, :],
-        s_lons[None, :],
+    return nearest_distances(
+        np.array(crime_lats),
+        np.array(crime_lons),
+        np.array(station_lats),
+        np.array(station_lons),
     )
-    return np.min(dist_matrix, axis=1)
 
 
 def add_distance_column(

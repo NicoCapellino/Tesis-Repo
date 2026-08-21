@@ -120,6 +120,12 @@ def load_usgs_fire_v2() -> pl.DataFrame | None:
     return pl.read_parquet(path) if path.exists() else None
 
 
+@st.cache_data(ttl=3600)
+def load_mta_bus_stops_v2() -> pl.DataFrame | None:
+    path = REFERENCE_DIR / DEFAULT_CITY / "mta_bus_stops.parquet"
+    return pl.read_parquet(path) if path.exists() else None
+
+
 # ---------------------------------------------------------------------------
 # Load data and populate session state (only once per session)
 # ---------------------------------------------------------------------------
@@ -129,6 +135,7 @@ if "complaints" not in st.session_state:
         st.session_state["usgs_healthcare_v2"] = load_usgs_healthcare_v2()
         st.session_state["usgs_police_v2"] = load_usgs_police_v2()
         st.session_state["usgs_fire_v2"] = load_usgs_fire_v2()
+        st.session_state["mta_bus_stops_v2"] = load_mta_bus_stops_v2()
 
 df_all = st.session_state["complaints"]
 

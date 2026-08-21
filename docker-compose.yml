@@ -37,7 +37,12 @@ services:
       # Bind mount para desarrollo: los datos quedan en ./data del host.
       # En produccion, considerar volver a named volumes para mejor I/O.
       - ./data:/app/data
-    mem_limit: 8g
+    environment:
+      # En WSL/Docker el watcher poll-based escanea el bind-mount (parquets
+      # grandes) en cada ciclo, satura un core y tira los websockets de
+      # Streamlit. No necesitamos hot-reload en el contenedor.
+      - STREAMLIT_SERVER_FILE_WATCHER_TYPE=none
+    mem_limit: 16g
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
       interval: 30s

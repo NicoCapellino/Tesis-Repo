@@ -24,7 +24,7 @@ from app.components.background import (
     show_progress_or_result,
 )
 from app.components.display import dataframe, plotly_chart
-from app.components.distances import haversine_np
+from app.components.distances import nearest_distances
 from app.components.filters import get_filtered_data, get_usgs_v2_layers
 from app.components.utils import slugify as _slug
 
@@ -252,14 +252,11 @@ def _compute_associations_v2(
             0.05 + 0.30 * (idx - 1) / total_layers,
             f"Calculando distancias V2 a {label}...",
         )
-        distances = np.min(
-            haversine_np(
-                crime_lats[:, None],
-                crime_lons[:, None],
-                layer_lats[None, :],
-                layer_lons[None, :],
-            ),
-            axis=1,
+        distances = nearest_distances(
+            crime_lats,
+            crime_lons,
+            layer_lats,
+            layer_lons,
         )
         slug = _slug(label)
         near_item = f"CERCA_{slug}"
