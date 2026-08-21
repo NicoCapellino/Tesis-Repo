@@ -98,9 +98,9 @@ def _render_insight_section(
     st.subheader(f"{icon} {title}")
     st.markdown(description)
 
-    mask = rules_display["antecedent"].apply(filter_fn) | rules_display[
-        "consequent"
-    ].apply(filter_fn)
+    mask = rules_display["antecedent"].apply(filter_fn) | rules_display["consequent"].apply(
+        filter_fn
+    )
     filtered_rules = rules_display[mask].head(MAX_DISPLAY_ROWS)
 
     if filtered_rules.empty:
@@ -139,15 +139,12 @@ def _render_insight_section(
             level_key = f"NIVEL={level}"
             level_mask = filtered_rules["antecedent"].str.contains(
                 level_key, regex=False
-            ) | filtered_rules["consequent"].str.contains(
-                level_key, regex=False
-            )
+            ) | filtered_rules["consequent"].str.contains(level_key, regex=False)
             level_rules = filtered_rules[level_mask]
             if not level_rules.empty:
                 avg_lift = level_rules["lift"].mean()
                 st.markdown(
-                    f"- **{level}**: {len(level_rules)} reglas, "
-                    f"lift promedio = {avg_lift:.2f}"
+                    f"- **{level}**: {len(level_rules)} reglas, lift promedio = {avg_lift:.2f}"
                 )
 
 
@@ -280,9 +277,7 @@ def _compute_associations_v2(
             transactions[i].append(f"HORA={_hour_to_block(hours[i])}")
             # Polars dt.weekday() → ISO 8601: Mon=1 ... Sat=6, Sun=7
             is_weekend = days_of_week[i] in (6, 7)
-            transactions[i].append(
-                "DIA=FIN_DE_SEMANA" if is_weekend else "DIA=ENTRE_SEMANA"
-            )
+            transactions[i].append("DIA=FIN_DE_SEMANA" if is_weekend else "DIA=ENTRE_SEMANA")
 
     # --- Severity items ---
     if offense_levels is not None:
@@ -350,13 +345,9 @@ base = df.filter(
 )
 
 if include_temporal:
-    base = base.filter(
-        pl.col("hour").is_not_null() & pl.col("day_of_week").is_not_null()
-    )
+    base = base.filter(pl.col("hour").is_not_null() & pl.col("day_of_week").is_not_null())
 if include_severity:
-    base = base.filter(
-        pl.col("offense_level").is_in(["FELONY", "MISDEMEANOR", "VIOLATION"])
-    )
+    base = base.filter(pl.col("offense_level").is_in(["FELONY", "MISDEMEANOR", "VIOLATION"]))
 
 top_offenses = (
     base.group_by("offense_description")
@@ -379,10 +370,7 @@ if include_temporal:
     dims_label += " + temporal"
 if include_severity:
     dims_label += " + gravedad"
-st.caption(
-    f"Transacciones V2 ({dims_label}): {len(base):,} "
-    f"(muestra de hasta {SAMPLE_N:,})"
-)
+st.caption(f"Transacciones V2 ({dims_label}): {len(base):,} (muestra de hasta {SAMPLE_N:,})")
 
 crime_lats = base["latitude"].to_numpy()
 crime_lons = base["longitude"].to_numpy()
