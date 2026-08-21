@@ -23,3 +23,6 @@ __pycache__/
 
 # Data directory (managed via DVC or pipeline)
 data/
+
+# Thesis documents (LaTeX sources, drafts)
+Tesis/
