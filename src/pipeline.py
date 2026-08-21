@@ -18,6 +18,7 @@ from pathlib import Path
 import polars as pl
 
 from config.settings import DEFAULT_CITY, PROCESSED_DIR, RAW_DIR, PipelineSettings
+from src.extract.mta_bus_stops import MTABusStopsExtractor
 from src.extract.nypd_complaints import NYPDComplaintsExtractor
 from src.extract.usgs_structures import USGSStructuresExtractor
 from src.transform.complaints import ComplaintsTransformer
@@ -75,12 +76,18 @@ def run_pipeline(
             outputs["raw_complaints"] = RAW_DIR / "complaints"
             log.info("phase_extract_complaints_skipped")
 
-        # 1b. USGS V2 Structures (healthcare + police + fire)
+        # 1b. USGS V2 Structures (healthcare + police + fire) + MTA bus stops.
+        # skip_usgs gates all reference layers, not only the USGS ones.
         if not skip_usgs:
             usgs_extractor = USGSStructuresExtractor(settings=settings)
             usgs_paths = usgs_extractor.extract_and_save_all(city)
             outputs.update({f"reference_{k}": v for k, v in usgs_paths.items()})
             log.info("phase_extract_usgs_done")
+
+            with MTABusStopsExtractor(settings=settings) as mta_extractor:
+                mta_path = mta_extractor.extract_and_save(city)
+            outputs["reference_mta_bus_stops"] = mta_path
+            log.info("phase_extract_mta_done")
     else:
         log.info("phase_extract_skipped")
         outputs["raw_complaints"] = RAW_DIR / "complaints"
