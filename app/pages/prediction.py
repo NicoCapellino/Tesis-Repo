@@ -229,9 +229,10 @@ def _train_single_model(
 
     if use_gb:
         model = HistGradientBoostingClassifier(
-            max_iter=n_est,
-            max_depth=min(m_depth, 8),
-            learning_rate=0.1,
+            max_iter=300,
+            max_depth=12,
+            learning_rate=0.2,
+            min_samples_leaf=20,
             random_state=42,
             class_weight="balanced",
         )
