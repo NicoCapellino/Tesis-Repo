@@ -40,7 +40,7 @@ if len(geo_df) > MAX_HEATMAP_POINTS:
 
 heat_data = geo_df.select("latitude", "longitude").to_numpy().tolist()
 
-m = folium.Map(location=list(center), zoom_start=11, tiles="CartoDB positron")
+m = folium.Map(location=list(center), zoom_start=11, tiles="OpenStreetMap")
 HeatMap(heat_data, radius=8, blur=10, max_zoom=13).add_to(m)
 
 layer_styles = {
