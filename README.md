@@ -14,7 +14,7 @@ Capas de infraestructura (NYC):
 
 - Docker 20.10+
 - Docker Compose V2 (`docker compose`)
-- 4 GB de RAM libres como minimo, 8 GB recomendado
+- 16 GB de RAM libres como minimo, 32 GB recomendado
 - Internet para descargar datos NYPD y USGS
 
 ## Setup Rapido
