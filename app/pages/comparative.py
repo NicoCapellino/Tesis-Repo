@@ -368,7 +368,7 @@ MAP_SAMPLE = 15_000
 map_df = geo_df.sample(n=min(MAP_SAMPLE, len(geo_df)), seed=42)
 heat_data = map_df.select("latitude", "longitude").to_numpy().tolist()
 
-m = folium.Map(location=list(center), zoom_start=11, tiles="CartoDB positron")
+m = folium.Map(location=list(center), zoom_start=11, tiles="OpenStreetMap")
 heat_group = folium.FeatureGroup(name="Densidad de crimenes", show=True)
 HeatMap(heat_data, radius=8, blur=10, max_zoom=13).add_to(heat_group)
 heat_group.add_to(m)

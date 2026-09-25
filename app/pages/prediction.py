@@ -12,7 +12,7 @@ import pandas as pd
 import plotly.express as px
 import polars as pl
 import streamlit as st
-from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.model_selection import StratifiedKFold, cross_val_score, train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
@@ -186,6 +186,8 @@ def _build_feature_matrix(
         premise_dummies = pd.DataFrame()
 
     numeric_features = [
+        "latitude",
+        "longitude",
         "hour_sin",
         "hour_cos",
         "dow_sin",
@@ -226,12 +228,13 @@ def _train_single_model(
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
     if use_gb:
-        model = GradientBoostingClassifier(
-            n_estimators=n_est,
-            max_depth=min(m_depth, 8),
-            learning_rate=0.1,
+        model = HistGradientBoostingClassifier(
+            max_iter=300,
+            max_depth=12,
+            learning_rate=0.2,
+            min_samples_leaf=20,
             random_state=42,
-            subsample=0.8,
+            class_weight="balanced",
         )
     else:
         model = RandomForestClassifier(
@@ -256,7 +259,7 @@ def _train_single_model(
 
     return {
         "cm": confusion_matrix(y_test, y_pred),
-        "importances": model.feature_importances_,
+        "importances": getattr(model, "feature_importances_", np.zeros(len(feature_names))),
         "feature_names": feature_names,
         "class_names": class_names,
         "accuracy": accuracy_score(y_test, y_pred),

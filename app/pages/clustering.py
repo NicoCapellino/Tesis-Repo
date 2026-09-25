@@ -153,7 +153,7 @@ COLORS = [
     "#a9a9a9",
 ]
 
-m = folium.Map(location=list(center), zoom_start=11, tiles="CartoDB positron")
+m = folium.Map(location=list(center), zoom_start=11, tiles="OpenStreetMap")
 
 # Sample for map rendering
 MAP_SAMPLE = 3_000
