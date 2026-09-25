@@ -97,7 +97,7 @@ def _is_retryable_usgs_error(exc: BaseException) -> bool:
     if isinstance(exc, httpx.TransportError):
         return True
     if isinstance(exc, httpx.HTTPStatusError):
-        return exc.response.status_code >= 500
+        return exc.response.status_code >= 500 or exc.response.status_code == 429
     return False
 
 
@@ -375,7 +375,7 @@ class USGSStructuresExtractor:
         reraise=True,
     )
     def _post_wfs(self, xml_body: bytes, *, ftype: int) -> httpx.Response:
-        """POST the WFS request with retries for transient transport/5xx failures."""
+        """POST the WFS request with retries for transient transport/5xx/429 failures."""
         client = self._get_client()
         resp = client.post(
             WFS_URL,
