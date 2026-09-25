@@ -440,21 +440,26 @@ plotly_chart(fig_imp)
 
 st.markdown("---")
 st.subheader("V2: features USGS aplicadas")
+model_features = set(primary["feature_names"])
 distance_feature_rows = []
 for label in usgs_layers:
     slug = _slug(label)
-    distance_feature_rows.append(
-        {
-            "feature": f"dist_{slug}_km",
-            "descripcion": f"Distancia al punto mas cercano de {label}",
-        }
-    )
-    distance_feature_rows.append(
-        {
-            "feature": f"log_dist_{slug}_km",
-            "descripcion": f"Log de distancia a {label}",
-        }
-    )
+    dist_col = f"dist_{slug}_km"
+    log_col = f"log_dist_{slug}_km"
+    if dist_col in model_features:
+        distance_feature_rows.append(
+            {
+                "feature": dist_col,
+                "descripcion": f"Distancia al punto mas cercano de {label}",
+            }
+        )
+    if log_col in model_features:
+        distance_feature_rows.append(
+            {
+                "feature": log_col,
+                "descripcion": f"Log de distancia a {label}",
+            }
+        )
 dataframe(pd.DataFrame(distance_feature_rows), hide_index=True)
 
 feat_ranks = (
