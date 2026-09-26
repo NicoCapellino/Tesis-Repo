@@ -14,14 +14,15 @@ Capas de infraestructura (NYC):
 
 - Docker 20.10+
 - Docker Compose V2 (`docker compose`)
-- 16 GB de RAM libres como minimo, 32 GB recomendado
+- 16 GB de RAM libres como mínimo, 32 GB recomendado
+  - **Importante para Docker Desktop (Windows / macOS):** Docker Desktop asigna por defecto sólo el 50% de la RAM del host a su máquina virtual (típicamente 8 GB o menos). Para evitar cancelaciones silenciosas por memoria (`OOMKilled`) durante el pipeline masivo, asigne al menos 16 GB de memoria a Docker Desktop desde *Settings > Resources* (o en `%USERPROFILE%\.wslconfig` en Windows con WSL 2).
 - Internet para descargar datos NYPD y USGS
 
 ## Setup Rapido
 
 Desde la raiz del repo:
 
-```powershell
+```bash
 docker compose build
 docker compose run --rm pipeline
 docker compose up dashboard
@@ -35,14 +36,14 @@ http://localhost:8501
 
 Si ya existen datos crudos NYPD y solo se quiere transformar:
 
-```powershell
+```bash
 docker compose run --rm pipeline python -m src.pipeline --skip-extract
 ```
 
 Si se quiere actualizar solo referencia USGS V2 usando los datos NYPD crudos ya
 presentes:
 
-```powershell
+```bash
 docker compose run --rm pipeline python -m src.pipeline --skip-complaints
 ```
 
@@ -102,7 +103,7 @@ Paginas principales:
 
 ## Comandos
 
-```powershell
+```bash
 docker compose build
 docker compose run --rm pipeline
 docker compose run --rm pipeline python -m src.pipeline --skip-extract
@@ -130,3 +131,7 @@ Variables con prefijo `NYC_PIPELINE_`:
 - NYC Open Data - NYPD Complaint Data Current Year To Date
 - USGS National Map Structures WFS
 - MTA Bus Stops - NY State Open Data (Socrata `2ucp-7wg5`)
+
+### Nota sobre Reproducibilidad de Datos
+
+El pipeline consume el catálogo histórico (*NYPD Complaint Data Historic*) y el endpoint de año en curso (*NYPD Complaint Data Current Year To Date*, recurso Socrata `5uac-w243`). Este último es un recurso vivo que la policía de Nueva York actualiza periódicamente (trimestralmente) incorporando nuevas denuncias y reclasificaciones retrospectivas. Por ello, una nueva extracción en vivo a través de la API descargará registros adicionales o corregidos respecto a la fecha original del estudio (cerrado a 2025). Para reproducir con exactitud las cifras y visualizaciones documentadas en la tesis, se aconseja utilizar el corpus de archivos Parquet pre-procesados que se distribuye junto con el repositorio.

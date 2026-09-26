@@ -15,7 +15,7 @@ En la la tabla se detallan los requisitos mínimos y recomendados para la ejecuc
 | Componente | Requisito | Observaciones |
 |---|---|---|
 | Plataforma de contenerización | Docker 20.10+ con Docker Compose V2 | Disponible para Windows, macOS y Linux. Incluye la orquestación de servicios. |
-| Memoria RAM | 16 GB mínimo (32 GB recomendado) | El pipeline procesa masivamente en memoria. 32 GB aseguran estabilidad. |
+| Memoria RAM | 16 GB mínimo (32 GB recomendado) | El pipeline procesa masivamente en memoria. En Windows/macOS con Docker Desktop, es indispensable asignar manualmente al menos 16 GB a la VM (*Settings > Resources* o `.wslconfig`). |
 | Espacio en disco | 3 GB libres | Contempla la imagen de Docker y los datos en Parquet. |
 | Conexión a internet | Solo durante la extracción | Una vez ejecutado, el dashboard opera en modo local sin conectividad. |
 
@@ -26,17 +26,17 @@ El despliegue del sistema se realiza en tres pasos secuenciales. En primer lugar
 #### Paso 1: Obtención del repositorio.
 El código fuente del proyecto se distribuye mediante un sistema de control de versiones. El usuario debe clonar el repositorio en su equipo local mediante el comando correspondiente de la herramienta *Git*:
 
-"`bash
+```bash
 git clone https://github.com/{UsuarioGitHub}/Tesis-Repo.git
-    cd Tesis-Repo
-"`
+cd Tesis-Repo
+```
 
 #### Paso 2: Ejecución del pipeline ETL.
 Este proceso descarga los datos crudos desde las fuentes primarias —los *datasets* oficiales de denuncias del NYPD desde NYC Open Data, las capas de equipamiento institucional desde el servicio WFS del USGS National Map y las paradas de ómnibus desde el portal de datos abiertos del estado de Nueva York—, los transforma, valida su consistencia geoespacial y los almacena en formato optimizado Parquet. Se ejecuta una única vez o cuando se desee actualizar el corpus de datos:
 
-"`bash
+```bash
 docker compose run --rm pipeline
-"`
+```
 
 La ejecución puede demorar entre cinco y veinte minutos según la velocidad de la conexión a internet, dado que descarga y procesa un volumen masivo de registros históricos. Al finalizar, el sistema reporta los artefactos generados junto con sus tamaños en disco, como se ilustra en la la ilustración.
 
@@ -46,22 +46,22 @@ La ejecución puede demorar entre cinco y veinte minutos según la velocidad de 
 
 En caso de que ya se disponga de los datos descargados y solo se requiera re-ejecutar la fase de transformación (sin volver a descargar), se puede emplear la opción correspondiente:
 
-"`bash
+```bash
 docker compose run --rm pipeline python -m src.pipeline --skip-extract
-"`
+```
 
 #### Paso 3: Inicio del dashboard.
 Una vez completado el *pipeline*, se levanta el servidor web del *dashboard*:
 
-"`bash
+```bash
 docker compose up dashboard
-"`
+```
 
 El sistema queda accesible en el navegador en la dirección `http://localhost:8501`. Para ejecutar el servidor en segundo plano sin ocupar la terminal, se agrega la bandera `-d`:
 
-"`bash
+```bash
 docker compose up -d dashboard
-"`
+```
 
 ### Resolución de Problemas Comunes (Troubleshooting)
 
@@ -69,7 +69,7 @@ Durante el proceso de despliegue, pueden surgir algunos inconvenientes vinculado
 
     - **Puerto 8501 ocupado:** Si el contenedor del *dashboard* falla al iniciar indicando que el puerto ya está en uso, el usuario puede modificar el archivo `docker-compose.yml` cambiando la regla de mapeo de puertos (por ejemplo, a `8502:8501`).
     - **Fallo en la descarga de datos (ETL):** Si por cortes de internet o tiempos de espera agotados en la API del NYPD el proceso ETL se interrumpe, los archivos parciales pueden corromper ejecuciones futuras. Dado que el directorio `./data` se monta desde el sistema anfitrión, eliminar los volúmenes de Docker no lo afecta: se recomienda borrar manualmente el subdirectorio afectado dentro de `./data` y volver a ejecutar el Paso 2.
-    - **Falta de memoria RAM en Docker:** Si el *pipeline* se detiene abruptamente (*Killed* o *OOMKilled*), verifique que los recursos asignados a la máquina virtual de Docker (en Docker Desktop o equivalente) cumplan con los requisitos mínimos establecidos en la la tabla.
+    - **Falta de memoria RAM en Docker:** Si el *pipeline* se detiene abruptamente (*Killed* o *OOMKilled*), verifique los recursos asignados a la máquina virtual de Docker. En Windows y macOS, Docker Desktop asigna por defecto sólo el 50% de la memoria física del host. Debe incrementarse manualmente a 16 GB desde *Settings > Resources > Memory* (o en `%USERPROFILE%\.wslconfig` bajo `[wsl2] memory=16GB`).
     - **Fallas silenciosas:** Si un proceso se interrumpe sin mostrar errores evidentes en la web, se recomienda revisar los registros internos de los contenedores ejecutando el comando `docker compose logs pipeline` o `docker compose logs dashboard`.
     - **Permisos en entornos Linux:** En algunas distribuciones de Linux, si el usuario local no pertenece al grupo `docker`, será necesario anteponer `sudo` a todas las instrucciones (*e.g.*, `sudo docker compose up dashboard`).
 
@@ -118,7 +118,7 @@ A nivel de rendimiento, el entrenamiento de un modelo complejo —como un ensamb
 
 ### Manejo de Errores y Límites Computacionales
 
-Debido a la naturaleza intensiva de los algoritmos de *Spatial Data Mining*, el sistema cuenta con mecanismos de protección contra el agotamiento de memoria RAM (*MemoryError*). Si el usuario define configuraciones computacionalmente inviables —como aplicar el algoritmo FP-Growth con un soporte mínimo extremadamente bajo (ej. 0,001)— el servidor interceptará el fallo para evitar la caída de la aplicación. En estos casos, la interfaz desplegará un mensaje de advertencia indicando que se ha excedido la capacidad de memoria disponible. La solución operativa ante este escenario consiste en reducir el volumen de datos mediante los filtros globales (seleccionando menos años o un solo *borough*) o ajustar los parámetros algorítmicos hacia valores más restrictivos.
+Debido a la naturaleza intensiva de los algoritmos de *Spatial Data Mining*, el sistema cuenta con mecanismos de protección contra el agotamiento de memoria RAM (*MemoryError*). Si el usuario define configuraciones computacionalmente inviables —como aplicar el algoritmo FP-Growth con el soporte mínimo más bajo permitido por la interfaz (0,005) sobre la totalidad del corpus sin filtros de año ni distrito— el servidor interceptará el fallo para evitar la caída de la aplicación. En estos casos, la interfaz desplegará un mensaje de advertencia indicando que se ha excedido la capacidad de memoria disponible. La solución operativa ante este escenario consiste en reducir el volumen de datos mediante los filtros globales (seleccionando menos años o un solo *borough*) o ajustar los parámetros algorítmicos hacia valores más restrictivos (por ejemplo, aumentando el soporte mínimo a 0,01 o 0,02).
 
 ## Módulo de Estadísticas Descriptivas
 
@@ -360,7 +360,5 @@ Al utilizar los resultados producidos por la prueba de concepto, el investigador
 
     - **Sesgo en los datos fuente**: los datos del NYPD representan denuncias formales registradas por la policía, no la totalidad de la actividad criminal. Delitos no denunciados no aparecen en el corpus. Asimismo, los criterios de clasificación del NYPD pueden haber variado a lo largo del período 2020--2025.
 
-    - **Reproducibilidad**: dado que los algoritmos de aprendizaje automático utilizan semillas aleatorias fijas (`random\_state=42`), los resultados son reproducibles siempre que se mantengan los mismos datos de entrada y parámetros de configuración.
-
-    - **Actualización de datos**: el *pipeline* de extracción puede re-ejecutarse para incorporar datos más recientes. Debe tenerse presente que las capas de equipamiento del USGS National Map se actualizan según el calendario propio del organismo, de modo que la vigencia de esos datos depende de ese ciclo y no del momento en que se ejecuta la extracción.
+    - **Reproducibilidad y actualización de datos**: dado que los algoritmos de aprendizaje automático utilizan semillas aleatorias fijas (`random\_state=42`), los resultados analíticos son estrictamente reproducibles siempre que se mantengan los mismos datos de entrada y parámetros de configuración. No obstante, debe advertirse que el *pipeline* de extracción consulta en vivo dos fuentes del NYPD en NYC Open Data: el histórico (*Historic*, estático) y el del año en curso (*Current Year To Date*, recurso Socrata `5uac-w243`). Este último es un recurso dinámico que el departamento policial actualiza trimestralmente e incluye reclasificaciones retrospectivas de denuncias recientes. Por tal motivo, volver a ejecutar la extracción ETL desde la API descargará registros adicionales o actualizados para el período reciente, lo que modificará levemente las cifras globales respecto a las documentadas en esta tesis. Para una replicación exacta y determinística de las métricas reportadas, se debe operar sobre los archivos Parquet procesados distribuidos en el repositorio. Asimismo, las capas de equipamiento institucional del USGS National Map se actualizan conforme al ciclo de publicación de dicho organismo federal.
 

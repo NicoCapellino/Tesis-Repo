@@ -374,10 +374,11 @@ fig_cv = px.bar(
     barmode="group",
     title="V2: accuracy por fold",
     text="Accuracy",
+    color_discrete_sequence=["#2b5c8f", "#d95f02"],
 )
 fig_cv.update_traces(texttemplate="%{text:.3f}", textposition="outside")
 fig_cv.update_layout(yaxis=dict(range=[0, 1]))
-plotly_chart(fig_cv)
+plotly_chart(fig_cv, theme=None)
 
 cv_summary = pd.DataFrame(
     {
@@ -402,7 +403,7 @@ fig_cm = px.imshow(
     title=f"V2: matriz de confusion - {primary['model_name']}",
 )
 fig_cm.update_layout(width=600, height=500)
-plotly_chart(fig_cm)
+plotly_chart(fig_cm, theme=None)
 
 st.subheader("V2: reporte de clasificacion")
 st.code(primary["report"], language="text")
@@ -425,6 +426,7 @@ feat_imp_df = (
     .tail(15)
 )
 
+max_imp = float(feat_imp_df["importance"].max()) if not feat_imp_df.empty else 0.0
 fig_imp = px.bar(
     feat_imp_df,
     x="importance",
@@ -434,9 +436,10 @@ fig_imp = px.bar(
     title=f"V2: top 15 features - {primary['model_name']}",
     color="importance",
     color_continuous_scale="YlOrRd",
+    range_color=[0.0, max(max_imp, 0.01)],
 )
 fig_imp.update_layout(showlegend=False, coloraxis_showscale=False)
-plotly_chart(fig_imp)
+plotly_chart(fig_imp, theme=None)
 
 st.markdown("---")
 st.subheader("V2: features USGS aplicadas")
